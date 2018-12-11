@@ -57,6 +57,8 @@ struct hax_vm {
 /* Functions exported to host specific mode */
 hax_fd hax_vcpu_get_fd(CPUArchState *env);
 int valid_hax_tunnel_size(uint16_t size);
+int hax_vcpu_get_tsc(CPUArchState *env);
+int hax_vcpu_get_nsec(CPUArchState *env);
 
 /* Host specific functions */
 int hax_mod_version(struct hax_state *hax, struct hax_module_version *version);

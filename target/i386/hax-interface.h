@@ -311,6 +311,9 @@ struct hax_tunnel {
             uint64_t dr7;
         } debug;
     };
+    uint64_t apic_base;
+    uint64_t guest_tsc;
+    uint64_t guest_nsec;
 } __attribute__ ((__packed__));
 
 struct hax_module_version {

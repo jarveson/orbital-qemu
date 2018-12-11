@@ -91,6 +91,22 @@ hax_fd hax_vcpu_get_fd(CPUArchState *env)
     return vcpu->fd;
 }
 
+int hax_vcpu_get_tsc(CPUArchState *env)
+{
+    struct hax_vcpu_state *vcpu = ENV_GET_CPU(env)->hax_vcpu;
+    struct hax_tunnel *htun = vcpu->tunnel;
+
+    return htun->guest_tsc;
+}
+
+int hax_vcpu_get_nsec(CPUArchState *env)
+{
+    struct hax_vcpu_state *vcpu = ENV_GET_CPU(env)->hax_vcpu;
+    struct hax_tunnel *htun = vcpu->tunnel;
+
+    return htun->guest_nsec;
+}
+
 static int hax_get_capability(struct hax_state *hax)
 {
     int ret;
