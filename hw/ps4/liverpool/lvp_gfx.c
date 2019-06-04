@@ -24,6 +24,7 @@
 #include "hw/ps4/liverpool/pm4.h"
 #include "hw/ps4/macros.h"
 #include "gca/gfx_7_2_d.h"
+#include "gca/gfx_7_2_sh_mask.h"
 #include "ui/orbital.h"
 
 #include "exec/address-spaces.h"
@@ -514,7 +515,9 @@ static uint32_t cp_handle_pm4_type3(
     // todo: This is a bit hacky for sending idle, but it at least takes care of letting orbis
     // know for now, there also *should* be some mmio register checks that 'enable' this
     // but until the emu progresses farther its tough to tell what is needed
-    if (itop == PM4_IT_DRAW_INDEX_AUTO)
+    //uint32_t flag = (CP_INT_CNTL_RING0__CNTX_BUSY_INT_ENABLE_MASK | CP_INT_CNTL_RING0__CNTX_EMPTY_INT_ENABLE_MASK);
+    //if ((s->mmio[mmCP_INT_CNTL_RING0] & flag) == flag)
+    if(itop == PM4_IT_DRAW_INDEX_AUTO)
         liverpool_gc_ih_push_iv(s->ih, 0, IV_SRCID_UNK3_GUI_IDLE, 0);
     return count + 1;
 }
