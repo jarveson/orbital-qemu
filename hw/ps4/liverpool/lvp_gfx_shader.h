@@ -28,6 +28,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include "gfx-vk/vk_texture.h"
+
 /* forward declarations */
 typedef struct gart_state_t gart_state_t;
 typedef struct gfx_state_t gfx_state_t;
@@ -40,12 +42,7 @@ typedef struct vk_resource_vh_t {
 
 typedef struct vk_resource_th_t {
     hwaddr base;
-    VkBuffer stagingBuf;
-    VkDeviceMemory stagingMem;
-    VkImage image;
-    VkDeviceMemory mem;
-    VkImageView view;
-    VkFormat format;
+    struct vk_texture* texture;
 } vk_resource_th_t;
 
 typedef struct vk_resource_sh_t {

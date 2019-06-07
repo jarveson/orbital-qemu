@@ -35,6 +35,9 @@
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
 
+#include "../hw/ps4/liverpool/gfx-vk/vk_mem_alloc.h"
+#include "../hw/ps4/liverpool/gfx-vk/gfx_vk_helpers.h"
+
 typedef struct VulkanState {
     VkInstance instance;
     VkSurfaceKHR surface;
@@ -55,6 +58,8 @@ typedef struct VulkanState {
     uint32_t enabled_extension_count;
     uint32_t enabled_layer_count;
     char *extension_names[64];
+
+    gfx_vk_state cache;
 } VulkanState;
 
 void vk_init_instance(VulkanState* state, uint32_t extCount, const char **extNames);

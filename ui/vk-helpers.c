@@ -333,4 +333,49 @@ void vk_init_device(VulkanState* s)
             return;
         }
     }
+
+    {
+        s->cache.memidx_device_local = VK_MAX_MEMORY_TYPES;
+        s->cache.memidx_host_vis_coherent = VK_MAX_MEMORY_TYPES;
+        VkDeviceSize dlsize = 0;
+        VkDeviceSize hvcsize = 0;
+        for (uint32_t i = 0; i < s->mem_props.memoryTypeCount; i++) {
+            VkMemoryHeap *heap = &s->mem_props.memoryHeaps[s->mem_props.memoryTypes[i].heapIndex];
+            if (s->mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+                if (dlsize < heap->size) {
+                    dlsize = heap->size;
+                    s->cache.memidx_device_local = i;
+                }
+            }
+
+            if ((s->mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+                (s->mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) &&
+                (s->mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) ) {
+                
+                if (hvcsize < heap->size) {
+                    hvcsize = heap->size;
+                    s->cache.memidx_host_vis_coherent = i;
+                }
+            }
+        }
+
+        if (s->cache.memidx_device_local == VK_MAX_MEMORY_TYPES || s->cache.memidx_host_vis_coherent == VK_MAX_MEMORY_TYPES) {
+            error_report("finding memory types failed! dl:0x%x hvc: 0x%x", s->cache.memidx_device_local, s->cache.memidx_host_vis_coherent);
+            assert(0);
+            return;
+        }
+
+        VmaAllocatorCreateInfo allocatorInfo = {};
+        allocatorInfo.physicalDevice = s->gpu;
+        allocatorInfo.device = s->device;
+        res = vmaCreateAllocator(&allocatorInfo, &s->cache.allocator);
+        if (res != VK_SUCCESS) {
+            error_report("vmaCreateAllocator failed with code %d", res);
+            return;
+        }
+    }
+
+    s->cache.device = s->device;
+
+    s->cache.tex_cache = create_texture_cache(&s->cache);
 }

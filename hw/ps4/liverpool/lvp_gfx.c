@@ -77,10 +77,6 @@ static void gfx_draw_common_begin(
         free(s->pipeline);
     }
 
-    pipeline = gfx_pipeline_translate(s, vmid);
-    gfx_pipeline_update(pipeline, s, vmid);
-    s->pipeline = pipeline;
-
     VkCommandBufferBeginInfo cmdBufInfo = {};
     cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -88,6 +84,10 @@ static void gfx_draw_common_begin(
     if (res != VK_SUCCESS) {
         fprintf(stderr, "%s: vkBeginCommandBuffer failed!\n", __FUNCTION__);
     }
+
+    pipeline = gfx_pipeline_translate(s, vmid);
+    gfx_pipeline_update(pipeline, s, vmid);
+    s->pipeline = pipeline;
 
     VkRenderPassBeginInfo renderPassBeginInfo = {};
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -136,6 +136,13 @@ static void gfx_draw_common_end(
         assert(0);
     }
     qemu_mutex_unlock(&s->vk->queue_mutex);
+
+    res = vkResetCommandBuffer(s->vkcmdbuf, 0);
+    if (res != VK_SUCCESS) {
+        fprintf(stderr, "%s: vkResetCommandBuffer failed (%d)!", __FUNCTION__, res);
+        assert(0);
+    }
+    texture_cache_clear_upload_buffer(s->vk->cache.tex_cache);
 }
 
 static void gfx_draw_index_auto(

@@ -31,6 +31,8 @@
 #include "qemu-common.h"
 #include "exec/memory.h"
 
+#include "gfx-vk/vk_texture_cache.h"
+
 #include <vulkan/vulkan.h>
 
 #include <string.h>
@@ -271,119 +273,24 @@ static void gfx_shader_update_th(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     struct gcn_resource_th_t *th, vk_resource_th_t *vkres)
 {
     gart_state_t *gart = gfx->gart;
-    VkDevice dev = gfx->vk->device;
-    VkResult res;
 
-    if (vkres->image != VK_NULL_HANDLE) {
-        vkDestroyImage(dev, vkres->image, NULL);
-        vkFreeMemory(dev, vkres->mem, NULL);
-    }
+    VkFormat format = getVkFormat_byImgDataNumFormat(th->dfmt, th->nfmt);
+    VkComponentMapping mapping = getVkCompMapping_byGcnMapping(th->dst_sel_x, th->dst_sel_y, th->dst_sel_z, th->dst_sel_w);
+    size_t texelSize = getTexelSize_fromImgFormat(th->dfmt);
 
-    // Create render target image
-    VkImageCreateInfo imgInfo = {};
-    imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imgInfo.imageType = VK_IMAGE_TYPE_2D;
-    imgInfo.format = getVkFormat_byImgDataNumFormat(th->dfmt, th->nfmt);
-    imgInfo.extent.width = th->width + 1;
-    imgInfo.extent.height = th->height + 1;
-    imgInfo.extent.depth = 1; // TODO
-    imgInfo.mipLevels = 1; // TODO
-    imgInfo.arrayLayers = 1; // TODO
-    imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imgInfo.usage =
-        VK_IMAGE_USAGE_SAMPLED_BIT |
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-
-    res = vkCreateImage(dev, &imgInfo, NULL, &vkres->image);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkCreateImage failed!\n", __FUNCTION__);
-        return;
-    }
-
-    // Allocate memory for image and bind it
-    VkMemoryRequirements memReqs;
-    vkGetImageMemoryRequirements(dev, vkres->image, &memReqs);
-
-    VkMemoryAllocateInfo memInfo = {};
-    memInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memInfo.allocationSize = memReqs.size;
-    memInfo.memoryTypeIndex = vk_find_memory_type(gfx->vk, memReqs.memoryTypeBits,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    res = vkAllocateMemory(dev, &memInfo, NULL, &vkres->mem);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkAllocateMemory failed!\n", __FUNCTION__);
-        return;
-    }
-    res = vkBindImageMemory(dev, vkres->image, vkres->mem, 0);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkBindImageMemory failed!\n", __FUNCTION__);
-        return;
-    }
-
-    // Create image view
-    VkImageViewCreateInfo imgView = {};
-    imgView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    imgView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    imgView.format = getVkFormat_byImgDataNumFormat(th->dfmt, th->nfmt);
-    imgView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imgView.subresourceRange.baseMipLevel = 0;
-    imgView.subresourceRange.levelCount = 1;
-    imgView.subresourceRange.baseArrayLayer = 0;
-    imgView.subresourceRange.layerCount = 1;
-    imgView.image = vkres->image;
-    imgView.components = getVkCompMapping_byGcnMapping(th->dst_sel_x, th->dst_sel_y, th->dst_sel_z, th->dst_sel_w);
-
-    res = vkCreateImageView(dev, &imgView, NULL, &vkres->view);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkBindImageMemory failed!\n", __FUNCTION__);
-        return;
-    }
-
-    // Create staging buffer
-    VkBufferCreateInfo stagingBufInfo = {};
-    stagingBufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    stagingBufInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    stagingBufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    stagingBufInfo.size = memReqs.size; // TODO: Avoid memReqs.size
-    if (vkCreateBuffer(dev, &stagingBufInfo, NULL, &vkres->stagingBuf) != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkCreateBuffer failed!\n", __FUNCTION__);
-        return;
-    }
-
-    // Allocate staging memory for staging buffer
-    VkMemoryRequirements stagingMemReqs;
-    vkGetBufferMemoryRequirements(dev, vkres->stagingBuf, &stagingMemReqs);
-
-    VkMemoryAllocateInfo stagingAllocInfo = {};
-    stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    stagingAllocInfo.allocationSize = stagingMemReqs.size;
-    stagingAllocInfo.memoryTypeIndex = vk_find_memory_type(gfx->vk, stagingMemReqs.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    res = vkAllocateMemory(dev, &stagingAllocInfo, NULL, &vkres->stagingMem);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkAllocateMemory failed!\n", __FUNCTION__);
-        return;
-    }
-    res = vkBindBufferMemory(dev, vkres->stagingBuf, vkres->stagingMem, 0);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkBindBufferMemory failed!\n", __FUNCTION__);
-        return;
-    }
-
-    // Copy memory for staging buffer
-    void *data_dst;
+    // todo: dont use temp buffer for this, but my head is hurting from this c/c++ interop so it stays here for now
     void *data_src;
     uint64_t addr_src;
-    hwaddr size_src = stagingBufInfo.size;
-    vkMapMemory(dev, vkres->stagingMem, 0, stagingBufInfo.size, 0, &data_dst);
+    uint32_t srcpitch = th->ext.pitch == 0 ? texelSize * (th->width+1) : texelSize * (th->ext.pitch+1);
+    uint32_t dstpitch = texelSize * (th->width+1);
+
+    hwaddr size_src = (srcpitch * (th->height+1));
     addr_src = th->base256 << 8;
     data_src = address_space_map(gart->as[vmid], addr_src, &size_src, false);
 
-    uint32_t img_pitch = th->ext.pitch;
-    if (img_pitch != 0) {
+    uint32_t dstsize = dstpitch * (th->height+1);
+    void *data_dst = malloc(dstsize);
+    if (srcpitch != dstpitch) {
         void* tmpSrc = data_src;
         void* tmpDst = data_dst;
         img_pitch++;
@@ -397,102 +304,11 @@ static void gfx_shader_update_th(gfx_shader_t *shader, uint32_t vmid, gfx_state_
         }
     }
     else
-        memcpy(data_dst, data_src, (size_t)stagingBufInfo.size);
+        memcpy(data_dst, data_src, (size_t)dstsize);
+
     address_space_unmap(gart->as[vmid], data_src, size_src, false, size_src);
-    vkUnmapMemory(dev, vkres->stagingMem);
-
-    // Prepare copy command buffer
-    VkCommandBuffer copyCmdBuf;
-    VkCommandBufferAllocateInfo commandBufferInfo = {};
-    commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    commandBufferInfo.commandPool = gfx->vkcmdpool;
-    commandBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferInfo.commandBufferCount = 1;
-    assert(VK_SUCCESS == vkAllocateCommandBuffers(dev, &commandBufferInfo, &copyCmdBuf));
-
-    VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
-    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    assert(VK_SUCCESS == vkBeginCommandBuffer(copyCmdBuf, &cmdBufferBeginInfo));
-
-    {
-        VkImageMemoryBarrier barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .image = vkres->image,
-            .srcAccessMask = 0,
-            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .subresourceRange.baseMipLevel = 0,
-            .subresourceRange.levelCount = 1,
-            .subresourceRange.baseArrayLayer = 0,
-            .subresourceRange.layerCount = 1,
-        };
-        vkCmdPipelineBarrier(copyCmdBuf,
-            VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-            0, NULL, 0, NULL, 1, &barrier);
-    }
-    {
-        VkBufferImageCopy bufferCopyRegion = {};
-        bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        bufferCopyRegion.imageSubresource.mipLevel = 0;
-        bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
-        bufferCopyRegion.imageSubresource.layerCount = 1;
-        bufferCopyRegion.imageExtent.width = imgInfo.extent.width;
-        bufferCopyRegion.imageExtent.height = imgInfo.extent.height;
-        bufferCopyRegion.imageExtent.depth = imgInfo.extent.depth;
-        bufferCopyRegion.bufferOffset = 0;
-        vkCmdCopyBufferToImage(copyCmdBuf,
-            vkres->stagingBuf, vkres->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1, &bufferCopyRegion);
-    }
-    {
-        VkImageMemoryBarrier barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .image = vkres->image,
-            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .subresourceRange.baseMipLevel = 0,
-            .subresourceRange.levelCount = 1,
-            .subresourceRange.baseArrayLayer = 0,
-            .subresourceRange.layerCount = 1,
-        };
-        vkCmdPipelineBarrier(copyCmdBuf,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-            0, NULL, 0, NULL, 1, &barrier);
-    }
-
-    // Finish command buffer
-    assert(VK_SUCCESS == vkEndCommandBuffer(copyCmdBuf));
-
-    // Synchronously submit commands
-    VkFence fence;
-    VkFenceCreateInfo fenceInfo = {};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    assert(VK_SUCCESS == vkCreateFence(dev, &fenceInfo, NULL, &fence));
-
-    VkSubmitInfo submitInfo = {};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &copyCmdBuf;
-    qemu_mutex_lock(&gfx->vk->queue_mutex);
-    assert(VK_SUCCESS == vkQueueSubmit(gfx->vk->queue, 1, &submitInfo, fence));
-    assert(VK_SUCCESS == vkWaitForFences(dev, 1, &fence, VK_TRUE, UINT64_MAX));
-    qemu_mutex_unlock(&gfx->vk->queue_mutex);
-
-    // Free resources
-    vkDestroyFence(dev, fence, NULL);
-    vkFreeCommandBuffers(dev, gfx->vkcmdpool, 1, &copyCmdBuf);
-    vkFreeMemory(dev, vkres->stagingMem, NULL);
-    vkDestroyBuffer(dev, vkres->stagingBuf, NULL);
+    vkres->texture = texture_cache_create_texture(gfx->vk->cache.tex_cache, gfx->vkcmdbuf, data_dst, dstsize, th->width+1, th->height+1, format, mapping);
+    free(data_dst);
 }
 
 static void gfx_shader_update_sh(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
@@ -608,7 +424,7 @@ void gfx_shader_update(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     }
     for (i = 0; i < analyzer->res_th_count; i++) {
         VkDescriptorImageInfo imageInfo = {};
-        imageInfo.imageView = shader->vk_res_th[i].view;
+        imageInfo.imageView = get_vk_texture_view(shader->vk_res_th[i].texture);
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         VkWriteDescriptorSet descriptorWrite = {};
