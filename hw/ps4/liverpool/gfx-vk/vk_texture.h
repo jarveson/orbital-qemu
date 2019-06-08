@@ -1,5 +1,4 @@
-#ifndef PS4_LIVERPOOL_GFX_VK_TEXTURE
-#define PS4_LIVERPOOL_GFX_VK_TEXTURE
+#pragma once
 
 #include "gfx_vk_helpers.h"
 #include <vulkan/vulkan.h>
@@ -17,6 +16,4 @@ extern "C" {
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

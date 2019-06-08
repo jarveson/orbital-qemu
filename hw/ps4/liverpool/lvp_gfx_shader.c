@@ -32,56 +32,11 @@
 #include "exec/memory.h"
 
 #include "gfx-vk/vk_texture_cache.h"
+#include "gfx-vk/vk_shader_cache.h"
 
 #include <vulkan/vulkan.h>
 
 #include <string.h>
-
-static void gfx_shader_translate_common(
-    gfx_shader_t *shader, gfx_state_t *gfx, uint8_t *pgm, gcn_stage_t stage)
-{
-    gcn_parser_t parser;
-    gcn_analyzer_t *analyzer;
-    gcn_translator_t *translator;
-    uint32_t spirv_size;
-    uint8_t *spirv_data;
-    VkDevice dev = gfx->vk->device;
-    VkResult res;
-
-    // Pass #1: Analyze the bytecode
-    gcn_parser_init(&parser);
-    analyzer = &shader->analyzer;
-    gcn_analyzer_init(analyzer);
-    gcn_parser_parse(&parser, pgm, &gcn_analyzer_callbacks, analyzer);
-
-    // Pass #2: Translate the bytecode
-    gcn_parser_init(&parser);
-    translator = gcn_translator_create(analyzer, stage);
-    gcn_parser_parse(&parser, pgm, &gcn_translator_callbacks, translator);
-    spirv_data = gcn_translator_dump(translator, &spirv_size);
-
-    // Create module
-    VkShaderModuleCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = spirv_size;
-    createInfo.pCode = (uint32_t*)spirv_data;
-    res = vkCreateShaderModule(dev, &createInfo, NULL, &shader->module);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkCreateShaderModule failed!\n", __FUNCTION__);
-    }
-}
-
-static void gfx_shader_translate_ps(
-    gfx_shader_t *shader, gfx_state_t *gfx, uint8_t *pgm)
-{
-    gfx_shader_translate_common(shader, gfx, pgm, GCN_STAGE_PS);
-}
-
-static void gfx_shader_translate_vs(
-    gfx_shader_t *shader, gfx_state_t *gfx, uint8_t *pgm)
-{
-    gfx_shader_translate_common(shader, gfx, pgm, GCN_STAGE_VS);
-}
 
 void gfx_shader_translate(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx, gcn_stage_t stage)
 {
@@ -130,10 +85,8 @@ void gfx_shader_translate(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     pgm_data = address_space_map(gart->as[vmid], pgm_addr, &mapped_size, false);
     switch (stage) {
     case GCN_STAGE_PS:
-        gfx_shader_translate_ps(shader, gfx, pgm_data);
-        break;
     case GCN_STAGE_VS:
-        gfx_shader_translate_vs(shader, gfx, pgm_data);
+        shader->vkShader = get_vk_shader(gfx->vk->cache.shader_cache, stage, pgm_data, mapped_size);
         break;
     case GCN_STAGE_GS:
     case GCN_STAGE_ES:
@@ -159,7 +112,7 @@ void gfx_shader_translate_descriptors(
     size_t binding = 0;
     size_t i;
 
-    analyzer = &shader->analyzer;
+    analyzer = get_vk_shader_analysis(shader->vkShader);
     flags = 0;
     switch (shader->stage) {
     case GCN_STAGE_PS:
@@ -382,7 +335,7 @@ void gfx_shader_update(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     }
 
     // Update resources
-    analyzer = &shader->analyzer;
+    analyzer = get_vk_shader_analysis(shader->vkShader);
     for (i = 0; i < analyzer->res_vh_count; i++) {
         res = analyzer->res_vh[i];
         if (!gcn_resource_update(res, &dep_ctxt))

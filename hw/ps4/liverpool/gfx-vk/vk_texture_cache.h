@@ -1,5 +1,4 @@
-#ifndef PS4_LIVERPOOL_GFX_VK_TEX_CACHE
-#define PS4_LIVERPOOL_GFX_VK_TEX_CACHE
+#pragma once
 
 #include "gfx_vk_helpers.h"
 #ifdef __cplusplus
@@ -12,6 +11,4 @@ extern "C" {
     void texture_cache_clear_upload_buffer(struct vk_texture_cache* c); 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

@@ -1,5 +1,4 @@
-#ifndef PS4_LIVERPOOL_GFX_VK_HELPERS
-#define PS4_LIVERPOOL_GFX_VK_HELPERS
+#pragma once
 
 #include "vk_mem_alloc.h"
 #include <vulkan/vulkan.h>
@@ -18,12 +17,11 @@ typedef struct gfx_vk_state {
     uint32_t memidx_host_vis_coherent;
     uint32_t memidx_device_local;
     struct vk_texture_cache* tex_cache;
+    struct vk_shader_cache* shader_cache;
 } gfx_vk_state;
 
 struct vk_texture_cache* create_texture_cache(gfx_vk_state* state);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

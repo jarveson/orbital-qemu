@@ -378,4 +378,5 @@ void vk_init_device(VulkanState* s)
     s->cache.device = s->device;
 
     s->cache.tex_cache = create_texture_cache(&s->cache);
+    s->cache.shader_cache = create_vk_shader_cache(&s->cache);
 }

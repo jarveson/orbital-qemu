@@ -52,10 +52,7 @@ typedef struct vk_resource_sh_t {
 /* GFX Shader State */
 typedef struct gfx_shader_t {
     gcn_stage_t stage;
-    VkShaderModule module;
-
-    // Analyzer contains metadata required to update resources
-    gcn_analyzer_t analyzer;
+    struct vk_shader* vkShader;
     vk_resource_vh_t vk_res_vh[16];
     vk_resource_th_t vk_res_th[16];
     vk_resource_sh_t vk_res_sh[16];

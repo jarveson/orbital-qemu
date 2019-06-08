@@ -2,5 +2,6 @@ obj-y += vk_buffer.o
 obj-y += vk_mem_alloc.o
 obj-y += vk_texture.o
 obj-y += vk_texture_cache.o
+obj-y += vk_shader_cache.o
 obj-y += gfx_vk_helpers.o
 obj-y += xxhash.o

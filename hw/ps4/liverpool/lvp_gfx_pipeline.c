@@ -24,6 +24,8 @@
 #include "gca/gcn_translator.h"
 #include "ui/vk-helpers.h"
 
+#include "gfx-vk/vk_shader_cache.h"
+
 #include "qemu-common.h"
 
 #include <vulkan/vulkan.h>
@@ -183,13 +185,13 @@ gfx_pipeline_t* gfx_pipeline_translate(gfx_state_t *gfx, uint32_t vmid)
     VkPipelineShaderStageCreateInfo vsStageInfo = {};
     vsStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vsStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vsStageInfo.module = pipeline->shader_vs.module;
+    vsStageInfo.module = get_vk_shader_module(pipeline->shader_vs.vkShader);
     vsStageInfo.pName = "main";
 
     VkPipelineShaderStageCreateInfo psStageInfo = {};
     psStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     psStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    psStageInfo.module = pipeline->shader_ps.module;
+    psStageInfo.module = get_vk_shader_module(pipeline->shader_ps.vkShader);
     psStageInfo.pName = "main";
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {
@@ -300,9 +302,9 @@ gfx_pipeline_t* gfx_pipeline_translate(gfx_state_t *gfx, uint32_t vmid)
 
 void gfx_pipeline_update(gfx_pipeline_t *pipeline, gfx_state_t *gfx, uint32_t vmid)
 {
-    if (pipeline->shader_vs.module != VK_NULL_HANDLE)
+    if (get_vk_shader_module(pipeline->shader_vs.vkShader) != VK_NULL_HANDLE)
         gfx_shader_update(&pipeline->shader_vs, vmid, gfx, pipeline->vkds[GCN_DESCRIPTOR_SET_VS]);
-    if (pipeline->shader_ps.module != VK_NULL_HANDLE)
+    if (get_vk_shader_module(pipeline->shader_ps.vkShader) != VK_NULL_HANDLE)
         gfx_shader_update(&pipeline->shader_ps, vmid, gfx, pipeline->vkds[GCN_DESCRIPTOR_SET_PS]);
 }
 
