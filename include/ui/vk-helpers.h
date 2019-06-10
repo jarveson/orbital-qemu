@@ -53,6 +53,7 @@ typedef struct VulkanState {
     VkQueue queue;
     QemuMutex queue_mutex;
     VkDescriptorPool descriptor_pool;
+    VkDescriptorPool descriptor_pool_imgui;
     VkDebugUtilsMessengerEXT debug_messenger;
 
     uint32_t enabled_extension_count;

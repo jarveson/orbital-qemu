@@ -305,7 +305,7 @@ void vk_init_device(VulkanState* s)
     vkGetDeviceQueue(s->device, s->graphics_queue_node_index, 0, &s->queue);
     qemu_mutex_init(&s->queue_mutex);
 
-    // Create Descriptor Pool
+    // Create Descriptor Pool for imgui
     {
         VkDescriptorPoolSize pool_sizes[] =
         {
@@ -327,7 +327,30 @@ void vk_init_device(VulkanState* s)
         pool_info.maxSets = 1000 * ARRAYSIZE(pool_sizes);
         pool_info.poolSizeCount = (uint32_t)ARRAYSIZE(pool_sizes);
         pool_info.pPoolSizes = pool_sizes;
-        res = vkCreateDescriptorPool(s->device, &pool_info, NULL, &s->descriptor_pool);
+        res = vkCreateDescriptorPool(s->device, &pool_info, NULL, &s->descriptor_pool_imgui);
+        if (res != VK_SUCCESS) {
+            error_report("vkCreateDescriptorPool for imgui failed with code %d", res);
+            return;
+        }
+    }
+
+    // Create descriptor pool for gfx
+    {
+        VkDescriptorPoolSize poolSizes[3];
+        poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSizes[0].descriptorCount = 16;
+        poolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        poolSizes[1].descriptorCount = 16;
+        poolSizes[2].type = VK_DESCRIPTOR_TYPE_SAMPLER;
+        poolSizes[2].descriptorCount = 16;
+
+        VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
+        descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        descriptorPoolInfo.poolSizeCount = 3;
+        descriptorPoolInfo.pPoolSizes = poolSizes;
+        descriptorPoolInfo.maxSets = GCN_DESCRIPTOR_SET_COUNT;
+
+        res = vkCreateDescriptorPool(dev, &descriptorPoolInfo, NULL, &s->descriptor_pool);
         if (res != VK_SUCCESS) {
             error_report("vkCreateDescriptorPool failed with code %d", res);
             return;

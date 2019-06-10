@@ -435,7 +435,7 @@ static void FramePresent(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 static void CleanupVulkan(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 {
     ImGui_ImplVulkanH_DestroyWindowData(vks->instance, vks->device, wd, NULL);
-    vkDestroyDescriptorPool(vks->device, vks->descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vks->device, vks->descriptor_pool_imgui, NULL);
 
     vkDestroyDevice(vks->device, NULL);
     vkDestroyInstance(vks->instance, NULL);
@@ -589,7 +589,7 @@ static void* orbital_display_main(void* arg)
     init_info.QueueFamily = vks->graphics_queue_node_index;
     init_info.Queue = vks->queue;
     init_info.PipelineCache = NULL;
-    init_info.DescriptorPool = vks->descriptor_pool; // todo: check this
+    init_info.DescriptorPool = vks->descriptor_pool_imgui; // todo: check this
     init_info.Allocator = NULL;
     init_info.CheckVkResultFn = check_vk_result;
     ImGui_ImplVulkan_Init(&init_info, wd->RenderPass);

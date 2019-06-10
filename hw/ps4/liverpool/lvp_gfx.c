@@ -69,7 +69,6 @@ static void gfx_draw_common_begin(
     
     if (s->pipeline != NULL) {
         vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
-        vkDestroyDescriptorPool(s->vk->device, s->pipeline->vkdp, NULL);
         vkDestroyPipelineLayout(s->vk->device, s->pipeline->vkpl, NULL);
         vkDestroyPipeline(s->vk->device, s->pipeline->vkp, NULL);
         free(s->pipeline);
@@ -134,6 +133,12 @@ static void gfx_draw_common_end(
         assert(0);
     }
     qemu_mutex_unlock(&s->vk->queue_mutex);
+
+    res = vkResetDescriptorPool(s->vk->device, s->vk->descriptor_pool, 0);
+    if (res != VK_SUCCESS) {
+        fprintf(stderr, "%s: vkResetDescriptorPool failed (%d)!", __FUNCTION__, res);
+        assert(0);
+    }
 
     res = vkResetCommandBuffer(s->vkcmdbuf, 0);
     if (res != VK_SUCCESS) {
@@ -570,9 +575,7 @@ void *liverpool_gc_gfx_cp_thread(void *arg)
     VkCommandPoolCreateInfo commandPoolInfo = {};
     commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     commandPoolInfo.queueFamilyIndex = s->vk->graphics_queue_node_index;
-    commandPoolInfo.flags =
-        VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
-        VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     res = vkCreateCommandPool(dev, &commandPoolInfo, NULL, &s->vkcmdpool);
     if (res != VK_SUCCESS) {
