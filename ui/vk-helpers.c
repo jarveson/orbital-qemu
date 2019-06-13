@@ -348,9 +348,9 @@ void vk_init_device(VulkanState* s)
         descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptorPoolInfo.poolSizeCount = 3;
         descriptorPoolInfo.pPoolSizes = poolSizes;
-        descriptorPoolInfo.maxSets = GCN_DESCRIPTOR_SET_COUNT;
+        descriptorPoolInfo.maxSets = 8 /* GCN_DESCRIPTOR_SET_COUNT*/;
 
-        res = vkCreateDescriptorPool(dev, &descriptorPoolInfo, NULL, &s->descriptor_pool);
+        res = vkCreateDescriptorPool(s->device, &descriptorPoolInfo, NULL, &s->descriptor_pool);
         if (res != VK_SUCCESS) {
             error_report("vkCreateDescriptorPool failed with code %d", res);
             return;

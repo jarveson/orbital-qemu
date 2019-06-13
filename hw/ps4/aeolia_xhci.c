@@ -1734,7 +1734,7 @@ static int xhci_fire_ctl_transfer(XHCIState *xhci, XHCITransfer *xfer)
         xfer->complete = true;
         xfer->status = CC_SUCCESS;
         xhci_xfer_report(xfer);
-        return;
+        return 0;
     }
 
     /* do some sanity checks */
