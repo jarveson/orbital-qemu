@@ -246,14 +246,10 @@ static void gfx_shader_update_th(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     if (srcpitch != dstpitch) {
         void* tmpSrc = data_src;
         void* tmpDst = data_dst;
-        img_pitch++;
-        size_t texelSize = getTexelSize_fromImgFormat(th->dfmt);
-        size_t srcPitch = texelSize * img_pitch;
-        size_t dstPitch = texelSize * (th->width+1);
-        for(int i = 0; i < (th->height + 1); ++i) {
-            memcpy(tmpDst, tmpSrc, dstPitch);
-            tmpSrc += srcPitch;
-            tmpDst += dstPitch;
+        for(int i = 0; i < th->height+1; ++i) {
+            memcpy(tmpDst, tmpSrc, dstpitch);
+            tmpSrc += srcpitch;
+            tmpDst += dstpitch;
         }
     }
     else
