@@ -61,6 +61,7 @@ typedef struct VulkanState {
     char *extension_names[64];
 
     gfx_vk_state cache;
+    VkImage gameDisplay;
 } VulkanState;
 
 void vk_init_instance(VulkanState* state, uint32_t extCount, const char **extNames);

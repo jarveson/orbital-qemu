@@ -298,68 +298,56 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
             0, NULL, 0, NULL, 1, &barrier);
     }
-    if (ui.has_emu_image) {
-        {
-            VkImageMemoryBarrier barrier = {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-                .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .subresourceRange.baseMipLevel = 0,
-                .subresourceRange.levelCount = 1,
-                .subresourceRange.baseArrayLayer = 0,
-                .subresourceRange.layerCount = 1,
-                .image = ui.emu_image,
-            };
-            vkCmdPipelineBarrier(fd->CommandBuffer,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                0, NULL, 0, NULL, 1, &barrier);
-        }
-        const VkImageBlit blit = {
-            .srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .srcSubresource.layerCount = 1,
-            .dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .dstSubresource.layerCount = 1,
-            .srcOffsets = {{0, 0, 0}, {1920, 1080, 1}},
-            .dstOffsets = {{0, 0, 0}, {wd->Width, wd->Height, 1}}
+    {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+            .image = vks->gameDisplay,
         };
-        vkCmdBlitImage(fd->CommandBuffer, ui.emu_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            wd->BackBuffer[wd->FrameIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1, &blit, VK_FILTER_LINEAR);
-        {
-            VkImageMemoryBarrier barrier = {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-                .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .subresourceRange.baseMipLevel = 0,
-                .subresourceRange.levelCount = 1,
-                .subresourceRange.baseArrayLayer = 0,
-                .subresourceRange.layerCount = 1,
-                .image = ui.emu_image,
-            };
-            vkCmdPipelineBarrier(fd->CommandBuffer,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                0, NULL, 0, NULL, 1, &barrier);
-        }
-    } else {
-        VkImageSubresourceRange subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
+        vkCmdPipelineBarrier(fd->CommandBuffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+    }
+    const VkImageBlit blit = {
+        .srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .srcSubresource.layerCount = 1,
+        .dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .dstSubresource.layerCount = 1,
+        .srcOffsets = {{0, 0, 0}, {1920, 1080, 1}},
+        .dstOffsets = {{0, 0, 0}, {wd->Width, wd->Height, 1}}
+    };
+    vkCmdBlitImage(fd->CommandBuffer, vks->gameDisplay, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        wd->BackBuffer[wd->FrameIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &blit, VK_FILTER_LINEAR);
+    {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+            .image = vks->gameDisplay,
         };
-        vkCmdClearColorImage(fd->CommandBuffer, wd->BackBuffer[wd->FrameIndex],
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &wd->ClearValue.color, 1, &subresourceRange);
+        vkCmdPipelineBarrier(fd->CommandBuffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
     }
     {
         VkImageMemoryBarrier barrier = {
@@ -626,6 +614,92 @@ static void* orbital_display_main(void* arg)
         err = vkDeviceWaitIdle(vks->device);
         check_vk_result(err);
         ImGui_ImplVulkan_InvalidateFontUploadObjects();
+    }
+
+    // setup game 'display' image
+    {
+        VkImageCreateInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format = VK_FORMAT_R8G8B8A8_UNORM;
+        info.extent.width = 1920;
+        info.extent.height = 1080;
+        info.extent.depth = 1;
+        info.mipLevels = 1;
+        info.arrayLayers = 1;
+        info.samples = VK_SAMPLE_COUNT_1_BIT;
+        info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        err = vkCreateImage(vks->device, &info, NULL, &vks->gameDisplay);
+        check_vk_result(err);
+        VkMemoryRequirements req;
+        vkGetImageMemoryRequirements(vks->device, vks->gameDisplay, &req);
+        VkMemoryAllocateInfo alloc_info = {};
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = req.size;
+        alloc_info.memoryTypeIndex = vks->cache.memidx_device_local;
+        VkDeviceMemory mem;
+        err = vkAllocateMemory(vks->device, &alloc_info, NULL, &mem);
+        check_vk_result(err);
+        err = vkBindImageMemory(vks->device, vks->gameDisplay, mem, 0);
+        check_vk_result(err);
+
+        // change to dst readable and clear
+
+        VkCommandPool command_pool = wd->Frames[wd->FrameIndex].CommandPool;
+        VkCommandBuffer command_buffer = wd->Frames[wd->FrameIndex].CommandBuffer;
+
+        err = vkResetCommandPool(vks->device, command_pool, 0);
+        check_vk_result(err);
+        VkCommandBufferBeginInfo begin_info = {};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        err = vkBeginCommandBuffer(command_buffer, &begin_info);
+        check_vk_result(err);
+
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .image = vks->gameDisplay,
+            .srcAccessMask = 0,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+        };
+        vkCmdPipelineBarrier(command_buffer,
+            VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+
+        VkImageSubresourceRange ImageSubresourceRange;
+        ImageSubresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        ImageSubresourceRange.baseMipLevel   = 0;
+        ImageSubresourceRange.levelCount     = 1;
+        ImageSubresourceRange.baseArrayLayer = 0;
+        ImageSubresourceRange.layerCount     = 1;
+
+        
+        VkClearColorValue ClearColorValue = {{0.45f, 0.55f, 0.60f, 1.00f}};
+        vkCmdClearColorImage(command_buffer, vks->gameDisplay, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearColorValue, 1, &ImageSubresourceRange);
+
+        VkSubmitInfo end_info = {};
+        end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        end_info.commandBufferCount = 1;
+        end_info.pCommandBuffers = &command_buffer;
+        err = vkEndCommandBuffer(command_buffer);
+        check_vk_result(err);
+        err = vkQueueSubmit(vks->queue, 1, &end_info, VK_NULL_HANDLE);
+        check_vk_result(err);
+
+        err = vkDeviceWaitIdle(vks->device);
+        check_vk_result(err);
     }
 
     // Initialization

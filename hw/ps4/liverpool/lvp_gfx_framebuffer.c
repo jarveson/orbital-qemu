@@ -258,3 +258,122 @@ void gfx_framebuffer_init(gfx_framebuffer_t *fb, gfx_state_t *gfx, gfx_pipeline_
         fprintf(stderr, "%s: vkCreateFramebuffer failed!\n", __FUNCTION__);
     }
 }
+
+void gfx_framebuffer_flip(vk_attachment_t *att, gfx_state_t *gfx) {
+
+    // 'flip' the framebuffer by copying it into our gamedisplay image
+
+    VkDevice dev = gfx->vk->device;
+
+    // Prepare copy command buffer
+    VkCommandBuffer copyCmdBuf;
+    VkCommandBufferAllocateInfo commandBufferInfo = {};
+    commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferInfo.commandPool = gfx->vkcmdpool;
+    commandBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferInfo.commandBufferCount = 1;
+    assert(VK_SUCCESS == vkAllocateCommandBuffers(dev, &commandBufferInfo, &copyCmdBuf));
+
+    VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
+    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    assert(VK_SUCCESS == vkBeginCommandBuffer(copyCmdBuf, &cmdBufferBeginInfo));
+
+    // barrier fb/layout to ensure writes are done
+    {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+            .image = att->image,
+        };
+        vkCmdPipelineBarrier(copyCmdBuf,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+    }
+    // barrier ensure read of gamedisplay is done
+    {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+            .image = gfx->vk->gameDisplay,
+        };
+        vkCmdPipelineBarrier(copyCmdBuf,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+    }
+    const VkImageBlit blit = {
+        .srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .srcSubresource.layerCount = 1,
+        .dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .dstSubresource.layerCount = 1,
+        .srcOffsets = {{0, 0, 0}, {1920, 1080, 1}},
+        .dstOffsets = {{0, 0, 0}, {1920, 1080, 1}}
+    };
+    vkCmdBlitImage(copyCmdBuf, att->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        gfx->vk->gameDisplay, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &blit, VK_FILTER_LINEAR);
+    
+    // change layout back
+    {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = 0,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = 1,
+            .image = att->image,
+        };
+        vkCmdPipelineBarrier(copyCmdBuf,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+    }
+
+    // Finish command buffer
+    assert(VK_SUCCESS == vkEndCommandBuffer(copyCmdBuf));
+
+    // Synchronously submit commands
+    VkFence fence;
+    VkFenceCreateInfo fenceInfo = {};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    assert(VK_SUCCESS == vkCreateFence(dev, &fenceInfo, NULL, &fence));
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &copyCmdBuf;
+    qemu_mutex_lock(&gfx->vk->queue_mutex);
+    assert(VK_SUCCESS == vkQueueSubmit(gfx->vk->queue, 1, &submitInfo, fence));
+    assert(VK_SUCCESS == vkWaitForFences(dev, 1, &fence, VK_TRUE, UINT64_MAX));
+    qemu_mutex_unlock(&gfx->vk->queue_mutex);
+
+    // Free resources
+    vkDestroyFence(dev, fence, NULL);
+    vkFreeCommandBuffers(dev, gfx->vkcmdpool, 1, &copyCmdBuf);
+}

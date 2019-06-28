@@ -46,5 +46,6 @@ typedef struct gfx_framebuffer_t {
 
 /* gfx-framebuffer */
 void gfx_framebuffer_init(gfx_framebuffer_t *fb, gfx_state_t *gfx, gfx_pipeline_t *pipeline, uint32_t vmid);
+void gfx_framebuffer_flip(vk_attachment_t *att, gfx_state_t *gfx);
 
 #endif /* HW_PS4_LIVERPOOL_GC_GFX_FRAMEBUFFER_H */
