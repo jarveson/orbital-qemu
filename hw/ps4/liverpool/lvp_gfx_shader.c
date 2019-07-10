@@ -259,7 +259,11 @@ static void gfx_shader_update_vh(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     void *data_src;
     uint64_t addr_src;
     hwaddr size_src = bufInfo.size;
-    vkMapMemory(dev, vkres->mem, 0, bufInfo.size, 0, &data_dst);
+    res = vkMapMemory(dev, vkres->mem, 0, bufInfo.size, 0, &data_dst);
+    if (res != VK_SUCCESS) {
+        fprintf(stderr, "%s: vkMapMemory failed!\n", __FUNCTION__);
+        return;
+    }
     addr_src = vh->base;
     data_src = address_space_map(gart->as[vmid], addr_src, &size_src, false);
     memcpy(data_dst, data_src, (size_t)bufInfo.size);
@@ -378,7 +382,11 @@ static void gfx_shader_update_th(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     void *data_src;
     uint64_t addr_src;
     hwaddr size_src = stagingBufInfo.size;
-    vkMapMemory(dev, vkres->stagingMem, 0, stagingBufInfo.size, 0, &data_dst);
+    res = vkMapMemory(dev, vkres->stagingMem, 0, stagingBufInfo.size, 0, &data_dst);
+    if (res != VK_SUCCESS) {
+        fprintf(stderr, "%s: vkMapMemory failed!\n", __FUNCTION__);
+        return;
+    }
     addr_src = th->base256 << 8;
     data_src = address_space_map(gart->as[vmid], addr_src, &size_src, false);
 

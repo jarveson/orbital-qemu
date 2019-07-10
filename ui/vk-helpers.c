@@ -51,8 +51,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugReportCallback(
     int32_t                                     messageCode,
     const char*                                 pLayerPrefix,
     const char*                                 pMessage,
-    void*                                       pUSerData) {
-
+    void*                                       pUSerData)
+{
         fprintf(stderr, "VKDebugReportCallback : 0x%x, 0x%x, 0x%llx, 0x%llx, 0x%x, %s, %s\n", flags, objectType, object, location, messageCode, pLayerPrefix, pMessage);
         return VK_FALSE;
 }
@@ -92,13 +92,16 @@ VkResult CreateDebugReportCallbackEXT(
 static
 bool check_validation_layers(uint32_t reqLayerCount, const char **reqLayersStr)
 {
+    VkResult res;
     bool layerFound;
     uint32_t availableLayerCount = 0;
     uint32_t i, j;
 
-    vkEnumerateInstanceLayerProperties(&availableLayerCount, NULL);
+    res = vkEnumerateInstanceLayerProperties(&availableLayerCount, NULL);
+    assert(res == VK_SUCCESS);
     VkLayerProperties *availableLayers = malloc(availableLayerCount * sizeof(VkLayerProperties));
-    vkEnumerateInstanceLayerProperties(&availableLayerCount, availableLayers);
+    res = vkEnumerateInstanceLayerProperties(&availableLayerCount, availableLayers);
+    assert(res == VK_SUCCESS);
 
     for (i = 0; i < reqLayerCount; i++) {
         layerFound = false;
