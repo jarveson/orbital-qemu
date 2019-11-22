@@ -417,7 +417,7 @@ static uint32_t samu_packet_mailbox(samu_state_t *s,
                 (pupmgr_exit_t*)&reply_mb->data);
             break;
         default:
-            DPRINTF("Unknown Function ID: 0x%X", query_mb->function_id);
+            DPRINTF("PupMgr - Unknown Function ID: 0x%X", query_mb->function_id);
         }
         break;
     case AUTHID_AUTH_MGR:
@@ -448,19 +448,19 @@ static uint32_t samu_packet_mailbox(samu_state_t *s,
                 (authmgr_is_loadable_t*)&reply_mb->data);
             break;
         default:
-            DPRINTF("Unknown Function ID: 0x%X", query_mb->function_id);
+            DPRINTF("AuthMgr - Unknown Function ID: 0x%X", query_mb->function_id);
         }
         break;
     case AUTHID_IDATA_MGR:
         switch (query_mb->function_id) {
         default:
-            DPRINTF("Unknown Function ID: 0x%X", query_mb->function_id);
+            DPRINTF("IDataMgr - Unknown Function ID: 0x%X", query_mb->function_id);
         }
         break;
     case AUTHID_KEY_MGR:
         switch (query_mb->function_id) {
         default:
-            DPRINTF("Unknown Function ID: 0x%X", query_mb->function_id);
+            DPRINTF("KeyMgr - Unknown Function ID: 0x%X", query_mb->function_id);
         }
         break;
     default:

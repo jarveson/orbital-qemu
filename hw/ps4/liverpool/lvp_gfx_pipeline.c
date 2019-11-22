@@ -292,7 +292,7 @@ gfx_pipeline_t* gfx_pipeline_translate(gfx_state_t *gfx, uint32_t vmid)
 
     res = vkCreateGraphicsPipelines(gfx->vk->device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &pipeline->vkp);
     if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: Failed to create graphics pipeline!", __FUNCTION__);
+        fprintf(stderr, "%s: Failed to create graphics pipeline!\n", __FUNCTION__);
         return NULL;
     }
     return pipeline;
