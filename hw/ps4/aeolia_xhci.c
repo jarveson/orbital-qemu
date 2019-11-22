@@ -1624,6 +1624,11 @@ static void xhci_stall_ep(XHCITransfer *xfer)
     uint32_t err;
     XHCIStreamContext *sctx;
 
+    if (epctx->type == ET_ISO_IN || epctx->type == ET_ISO_OUT) {
+        /* never halt isoch endpoints, 4.10.2 */
+        return;
+    }
+
     if (epctx->nr_pstreams) {
         sctx = xhci_find_stream(epctx, xfer->streamid, &err);
         if (sctx == NULL) {
@@ -1954,6 +1959,7 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
             }
             usb_handle_packet(xfer->packet.ep->dev, &xfer->packet);
             if (xfer->packet.status == USB_RET_NAK) {
+                xhci_xfer_unmap(xfer);
                 return;
             }
             xhci_try_complete_packet(xfer);
@@ -2186,6 +2192,7 @@ static TRBCCode xhci_address_slot(XHCIState *xhci, unsigned int slotid,
                                   DeviceOutRequest | USB_REQ_SET_ADDRESS,
                                   slotid, 0, 0, NULL);
         assert(p.status != USB_RET_ASYNC);
+        usb_packet_cleanup(&p);
     }
 
     res = xhci_enable_ep(xhci, slotid, 1, octx+32, ep0_ctx);
@@ -2564,6 +2571,9 @@ static void xhci_process_commands(XHCIState *xhci)
         case CR_GET_PORT_BANDWIDTH:
             event.ccode = xhci_get_port_bandwidth(xhci, trb.parameter);
             break;
+        case CR_NOOP:
+            event.ccode = CC_SUCCESS;
+            break;
         case CR_VENDOR_NEC_FIRMWARE_REVISION:
             if (xhci->nec_quirks) {
                 event.type = 48; /* NEC reply */
@@ -2586,6 +2596,7 @@ static void xhci_process_commands(XHCIState *xhci)
             }
             break;
         default:
+            fprintf(stderr, "xhci: unimplemented command: %d", type);
             event.ccode = CC_TRB_ERROR;
             break;
         }
