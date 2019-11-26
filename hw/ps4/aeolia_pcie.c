@@ -380,17 +380,40 @@ typedef struct icc_query_board_version_t {
     uint32_t emc_version_edition;
     uint32_t emc_version_sec_dsc;
     uint32_t emc_version_reserved;
+
+    uint16_t syscon_version_major;
+    uint16_t syscon_version_minor;
+    uint16_t syscon_version_branch;
+    uint16_t syscon_version_revision;
+
+    uint8_t syscon_version_modify;
+    uint8_t syscon_version_edition;
+    uint8_t syscon_version_sec_dsc;
+    uint8_t syscon_version_reserved;
 } icc_query_board_version_t;
+
+_Static_assert(sizeof(icc_query_board_version_t) == 0x2C, "invalid query board version size");
 
 static void icc_query_board_version(
     AeoliaPCIEState *s, aeolia_icc_message_t* reply)
 {
     icc_query_board_version_t* data = (void*)&reply->data;
 
+    memset(data, 0, sizeof(icc_query_board_version_t));
+
     data->emc_version_major = 0x0002;
     data->emc_version_minor = 0x0018;
     data->emc_version_branch = 0x0001;
     data->emc_version_revision = 0x0000;
+
+    // numbers are based on firmware version found in 5.00 recovery
+    data->syscon_version_major = 0x0100;
+    data->syscon_version_minor = 0x0;
+    data->syscon_version_branch = 0x7;
+    data->syscon_version_revision = 0x10;
+    data->syscon_version_modify = 0x45;
+    data->syscon_version_edition = 0x54;
+    data->syscon_version_reserved = 0x0;
 
     reply->result = 0;
     reply->length = sizeof(aeolia_icc_message_t) +
