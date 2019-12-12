@@ -30,6 +30,7 @@ typedef struct samu_state_t samu_state_t;
 /* functions */
 #define PUPMGR_SM_DECRYPT_HEADER              0x1
 #define PUPMGR_SM_DECRYPT_SEGMENT             0x4
+#define PUPMGR_SM_DECRYPT_SEGMENT_BLOCK       0x5
 #define PUPMGR_SM_VERIFY_HEADER               0xF
 #define PUPMGR_SM_EXIT                     0xFFFF
 
@@ -71,6 +72,16 @@ typedef struct pupmgr_decrypt_segment_t {
     // TODO
 } pupmgr_decrypt_segment_t;
 
+typedef struct pupmgr_decrypt_segment_block_t { 
+    uint64_t block_table_addr;
+    uint64_t table_table_addr;
+
+    uint16_t entry_index;
+    uint16_t block_index;
+    uint32_t zero;
+
+} pupmgr_decrypt_segment_block_t;
+
 typedef struct pupmgr_verify_header_t {
     /* <input> */
     uint64_t header_addr;
@@ -95,6 +106,8 @@ uint32_t sbl_pupmgr_decrypt_header(samu_state_t *s,
     const pupmgr_decrypt_header_t *query, pupmgr_decrypt_header_t *reply);
 uint32_t sbl_pupmgr_decrypt_segment(samu_state_t *s,
     const pupmgr_decrypt_segment_t *query, pupmgr_decrypt_segment_t *reply);
+uint32_t sbl_pupmgr_decrypt_segment_block(samu_state_t *s,
+    const pupmgr_decrypt_segment_block_t *query, pupmgr_decrypt_segment_block_t *reply);
 uint32_t sbl_pupmgr_verify_header(samu_state_t *s,
     const pupmgr_verify_header_t *query, pupmgr_verify_header_t *reply);
 uint32_t sbl_pupmgr_exit(
