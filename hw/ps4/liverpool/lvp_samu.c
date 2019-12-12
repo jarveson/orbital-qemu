@@ -397,21 +397,31 @@ static uint32_t samu_packet_mailbox(samu_state_t *s,
         }
         switch (query_mb->function_id) {
         case PUPMGR_SM_DECRYPT_HEADER:
+            DPRINTF("PupMgr - Decrypt Header");
             ret = sbl_pupmgr_decrypt_header(s,
                 (pupmgr_decrypt_header_t*)&query_mb->data,
                 (pupmgr_decrypt_header_t*)&reply_mb->data);
             break;
         case PUPMGR_SM_DECRYPT_SEGMENT:
+            DPRINTF("PupMgr - Decrypt Segment");
             ret = sbl_pupmgr_decrypt_segment(s,
                 (pupmgr_decrypt_segment_t*)&query_mb->data,
                 (pupmgr_decrypt_segment_t*)&reply_mb->data);
             break;
+        case PUPMGR_SM_DECRYPT_SEGMENT_BLOCK:
+            DPRINTF("PupMgr - Decrypt Segment Block");
+            ret = sbl_pupmgr_decrypt_segment_block(s,
+                (pupmgr_decrypt_segment_block_t*)&query_mb->data,
+                (pupmgr_decrypt_segment_block_t*)&reply_mb->data);
+            break;
         case PUPMGR_SM_VERIFY_HEADER:
+            DPRINTF("PupMgr - Verify Header");
             ret = sbl_pupmgr_verify_header(s,
                 (pupmgr_verify_header_t*)&query_mb->data,
                 (pupmgr_verify_header_t*)&reply_mb->data);
             break;
         case PUPMGR_SM_EXIT:
+            DPRINTF("PupMgr - Exit");
             ret = sbl_pupmgr_exit(
                 (pupmgr_exit_t*)&query_mb->data,
                 (pupmgr_exit_t*)&reply_mb->data);
