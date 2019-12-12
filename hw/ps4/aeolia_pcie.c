@@ -394,6 +394,12 @@ typedef struct icc_query_board_version_t {
 
 _Static_assert(sizeof(icc_query_board_version_t) == 0x2C, "invalid query board version size");
 
+typedef struct icc_query_nvram_t {
+    uint16_t addr; 
+    uint16_t len; // <= 0x400
+
+} icc_query_nvram_t;
+
 static void icc_query_board_version(
     AeoliaPCIEState *s, aeolia_icc_message_t* reply)
 {
@@ -424,6 +430,29 @@ static void icc_query_buttons_state(
     AeoliaPCIEState *s, aeolia_icc_message_t* reply)
 {
     printf("qemu: ICC: icc_query_buttons_state\n");
+}
+
+static void icc_query_nvram_read(AeoliaPCIEState *s, const aeolia_icc_message_t *query, aeolia_icc_message_t *reply) {
+    const icc_query_nvram_t *nvramquery = (void*)&query->data;
+
+    printf("qemu: ICC: icc_query_nvram_read: addr 0x%X, len:0x%X\n", nvramquery->addr, nvramquery->len);
+
+    switch(nvramquery->addr) {
+        case 0x18: // sceKernelHwHasWlanBt second bit as 1 for none
+            reply->data[0] = 2;
+            reply->result = 0;
+            reply->length = sizeof(aeolia_icc_message_t) + 1;
+            break;
+        case 0x20: // init_safe_mode
+        case 0x21: // sysctl_machdep_cavern_dvt1_init_update current mode
+        case 0x30: // wlan mode?
+        case 0x38: // something gbe
+        case 0x50: // ssb_rtc_init_exclock
+        case 0xA0: // get_icc_max
+        default:
+        // ignore
+        break;
+    }
 }
 
 static void icc_query(AeoliaPCIEState *s)
@@ -491,20 +520,19 @@ static void icc_query(AeoliaPCIEState *s)
             printf("qemu: ICC: Unknown unk_0D query 0x%04X!\n", query->minor);
         }
         break;
-#if 0
     case ICC_CMD_QUERY_NVRAM:
         switch (query->minor) {
         case ICC_CMD_QUERY_NVRAM_OP_WRITE:
-            icc_query_nvram_write(s, reply);
+            //icc_query_nvram_write(s, reply);
+            printf("qemu: ICC: Ignoring NVRAM write!\n");
             break;
         case ICC_CMD_QUERY_NVRAM_OP_READ:
-            icc_query_nvram_read(s, reply);
+            icc_query_nvram_read(s, query, reply);
             break;
         default:
             printf("qemu: ICC: Unknown NVRAM query 0x%04X!\n", query->minor);
         }
         break;
-#endif
     default:
         printf("qemu: ICC: Unknown query %#x!\n", query->major);
     }
