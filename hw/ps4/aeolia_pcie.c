@@ -432,6 +432,11 @@ static void icc_query_buttons_state(
     printf("qemu: ICC: icc_query_buttons_state\n");
 }
 
+static void icc_query_nvram_write(AeoliaPCIEState *s, const aeolia_icc_message_t *query) {
+    const icc_query_nvram_t *nvramquery = (void*)&query->data;
+    printf("qemu: ICC: icc_query_nvram_write addr: 0x%X, len:0x%X\n", nvramquery->addr, nvramquery->len);
+}
+
 static void icc_query_nvram_read(AeoliaPCIEState *s, const aeolia_icc_message_t *query, aeolia_icc_message_t *reply) {
     const icc_query_nvram_t *nvramquery = (void*)&query->data;
 
@@ -523,8 +528,7 @@ static void icc_query(AeoliaPCIEState *s)
     case ICC_CMD_QUERY_NVRAM:
         switch (query->minor) {
         case ICC_CMD_QUERY_NVRAM_OP_WRITE:
-            //icc_query_nvram_write(s, reply);
-            printf("qemu: ICC: Ignoring NVRAM write!\n");
+            icc_query_nvram_write(s, query);
             break;
         case ICC_CMD_QUERY_NVRAM_OP_READ:
             icc_query_nvram_read(s, query, reply);
