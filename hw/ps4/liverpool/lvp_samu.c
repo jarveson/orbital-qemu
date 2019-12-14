@@ -93,6 +93,7 @@ void liverpool_gc_samu_fakedecrypt(uint8_t *out_buffer,
     if (zip_stat(blobs_zip, filename, 0, &stat) == -1) {
         printf("qemu: samu-fakedecrypt: Could not find decrypted blob: %s\n", filename);
         qemu_hexdump(in_buffer, stdout, "", in_length > 0x80 ? 0x80 : in_length);
+        memset(out_buffer, 0, in_length);
         return;
     }
     if (in_length != stat.size) {
@@ -174,14 +175,14 @@ static void samu_packet_ccp_aes(samu_state_t *s,
     out_size = data_size;
 
     in_addr = query_ccp->aes.in_addr;
-    in_data = address_space_map(&address_space_memory, in_addr, &in_size, true);
+    in_data = samu_map(s, in_addr, &in_size, true);
 
     if (query_ccp->opcode & CCP_FLAG_SLOT_OUT) {
         out_slot = *(uint32_t*)&query_ccp->aes.out_addr;
         out_data = s->slots[out_slot];
     } else {
         out_addr = query_ccp->aes.out_addr;
-        out_data = address_space_map(&address_space_memory, out_addr, &out_size, true);
+        out_data = samu_map(s, out_addr, &out_size, true);
     }
 
     if (query_ccp->opcode & CCP_FLAG_SLOT_KEY) {
@@ -194,9 +195,9 @@ static void samu_packet_ccp_aes(samu_state_t *s,
     // TODO/HACK: We don't have keys, so use hardcoded blobs instead
     liverpool_gc_samu_fakedecrypt(out_data, in_data, data_size);
 
-    address_space_unmap(&address_space_memory, in_data, in_size, true, in_size);
+    samu_unmap(s, in_data, in_size, true, in_size);
     if (!(query_ccp->opcode & CCP_FLAG_SLOT_OUT)) {
-        address_space_unmap(&address_space_memory, out_data, out_size, true, out_size);
+        samu_unmap(s, out_data, out_size, true, out_size);
     }
 }
 
@@ -220,14 +221,14 @@ static void samu_packet_ccp_xts(samu_state_t *s,
     out_size = data_size;
 
     in_addr = query_ccp->aes.in_addr;
-    in_data = address_space_map(&address_space_memory, in_addr, &in_size, true);
+    in_data = samu_map(s, in_addr, &in_size, true);
 
     if (query_ccp->opcode & CCP_FLAG_SLOT_OUT) {
         out_slot = *(uint32_t*)&query_ccp->xts.out_addr;
         out_data = s->slots[out_slot];
     } else {
         out_addr = query_ccp->xts.out_addr;
-        out_data = address_space_map(&address_space_memory, out_addr, &out_size, true);
+        out_data = samu_map(s, out_addr, &out_size, true);
     }
 
     if (query_ccp->opcode & CCP_FLAG_SLOT_KEY) {
@@ -274,9 +275,9 @@ static void samu_packet_ccp_zlib(samu_state_t *s,
     hwaddr out_mapsize = query_ccp->zlib.out_size;
     z_stream stream;
 
-    in_data = address_space_map(&address_space_memory,
+    in_data = samu_map(s,
         query_ccp->zlib.in_addr, &in_mapsize, false);
-    out_data = address_space_map(&address_space_memory,
+    out_data = samu_map(s,
         query_ccp->zlib.out_addr, &out_mapsize, true);
 
     memset(&stream, 0, sizeof(stream));
@@ -303,9 +304,9 @@ static void samu_packet_ccp_zlib(samu_state_t *s,
     }
 
 error:
-    address_space_unmap(&address_space_memory, in_data,
+    samu_unmap(s, in_data,
         in_mapsize, false, in_mapsize);
-    address_space_unmap(&address_space_memory, out_data,
+    samu_unmap(s, out_data,
         out_mapsize, true, out_mapsize);
 }
 
@@ -433,26 +434,31 @@ static uint32_t samu_packet_mailbox(samu_state_t *s,
     case AUTHID_AUTH_MGR:
         switch (query_mb->function_id) {
         case AUTHMGR_SM_VERIFY_HEADER:
+            DPRINTF("AuthMgr - Verify Header");
             ret = sbl_authmgr_verify_header(s,
                 (authmgr_verify_header_t*)&query_mb->data,
                 (authmgr_verify_header_t*)&reply_mb->data);
             break;
         case AUTHMGR_SM_LOAD_SELF_SEGMENT:
+            DPRINTF("AuthMgr - Load Self Segment");
             ret = sbl_authmgr_load_self_segment(s,
                 (authmgr_load_self_segment_t*)&query_mb->data,
                 (authmgr_load_self_segment_t*)&reply_mb->data);
             break;
         case AUTHMGR_SM_LOAD_SELF_BLOCK:
+            DPRINTF("AuthMgr - Self Block");
             ret = sbl_authmgr_load_self_block(s,
                 (authmgr_load_self_block_t*)&query_mb->data,
                 (authmgr_load_self_block_t*)&reply_mb->data);
             break;
         case AUTHMGR_SM_INVOKE_CHECK:
+            DPRINTF("AuthMgr - Invoke Check");
             ret = sbl_authmgr_invoke_check(s,
                 (authmgr_invoke_check_t*)&query_mb->data,
                 (authmgr_invoke_check_t*)&reply_mb->data);
             break;
         case AUTHMGR_SM_IS_LOADABLE:
+            DPRINTF("AuthMgr - Is Loadable");
             ret = sbl_authmgr_is_loadable(s,
                 (authmgr_is_loadable_t*)&query_mb->data,
                 (authmgr_is_loadable_t*)&reply_mb->data);
@@ -501,10 +507,8 @@ void liverpool_gc_samu_packet(samu_state_t *s,
     uint32_t status = 0;
 
     reply_addr = query_addr & 0xFFF00000; // TODO: Where does this address come from?
-    query = (samu_packet_t*)address_space_map(
-        &address_space_memory, query_addr, &query_len, true);
-    reply = (samu_packet_t*)address_space_map(
-        &address_space_memory, reply_addr, &reply_len, true);
+    query = (samu_packet_t*)samu_map(s, query_addr, &query_len, true);
+    reply = (samu_packet_t*)samu_map(s, reply_addr, &reply_len, true);
     trace_samu_packet(query);
 
     memset(reply, 0, packet_length);
@@ -530,8 +534,8 @@ void liverpool_gc_samu_packet(samu_state_t *s,
     }
     reply->status = status;
 
-    address_space_unmap(&address_space_memory, query, query_len, true, query_len);
-    address_space_unmap(&address_space_memory, reply, reply_len, true, reply_len);
+    samu_unmap(s, query, query_len, true, query_len);
+    samu_unmap(s, reply, reply_len, true, reply_len);
 }
 
 void liverpool_gc_samu_init(samu_state_t *s, uint64_t addr)
@@ -544,11 +548,11 @@ void liverpool_gc_samu_init(samu_state_t *s, uint64_t addr)
         "secure kernel build: Sep 26 2017 ??:??:?? (r8963:release_branches/release_05.000)\n";
 
     length = 0x1000;
-    packet = address_space_map(&address_space_memory, addr, &length, true);
+    packet = samu_map(s, addr, &length, true);
     memset(packet, 0, length);
     samu_packet_io_write(s, packet, SAMU_CMD_IO_WRITE_FD_STDOUT,
         (char*)secure_kernel_build, strlen(secure_kernel_build));
-    address_space_unmap(&address_space_memory, packet, length, true, length);
+    samu_unmap(s, packet, length, true, length);
 
     blobs_zip = zip_open(blobs_filename, ZIP_RDONLY, &err);
     if (!blobs_zip) {

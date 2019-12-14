@@ -84,10 +84,10 @@ static IOMMUTLBEntry gart_translate(
     pde_index = (addr >> 23) & 0xFFFFF; /* TODO: What's the mask? */
     pte_index = (addr >> 12) & 0x7FF;
     pde = ldq_le_phys(&address_space_memory, pde_base + pde_index * 8);
-    pte_base = (pde & ~0xFF);
+    pte_base = (pde & ~(0xFFull));
     pte = ldq_le_phys(&address_space_memory, pte_base + pte_index * 8);
 
-    ret.translated_addr = (pte & ~0xFFF) | (addr & 0xFFF);
+    ret.translated_addr = (pte & ~(0xFFFull)) | (addr & 0xFFF);
     ret.addr_mask = 0xFFF; /* TODO: How to decode this? (set for now to 4 KB pages) */
     ret.perm = IOMMU_RW; /* TODO: How to decode this? */
     return ret;
