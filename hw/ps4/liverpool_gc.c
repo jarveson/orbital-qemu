@@ -411,17 +411,18 @@ static void liverpool_gc_samu_doorbell(LiverpoolGCState *s, uint32_t value)
     DPRINTF("liverpool_gc_samu_doorbell: { flags: %llX, query: %llX, reply: %llX }\n",
         query_addr >> 48, query_addr, reply_addr);
 
-    uint32_t command = ldl_le_phys(&address_space_memory, query_addr);
+    uint32_t command = ldl_le_phys(s->gart.as[15 /*gart->as[SAMU_VMID] */], query_addr);
     if (command == 0) {
         liverpool_gc_samu_init(&s->samu, query_addr);
     } else {
         liverpool_gc_samu_packet(&s->samu, query_addr, reply_addr);
     }
 
-    if (command == SAMU_CMD_SERVICE_RAND) {
+    if (command == SAMU_CMD_SERVICE_RAND || command == 0) {
         return;
     }
 
+    s->samu_ix[ixSAM_IH_CPU_AM32_INT_STATUS] = 1;
     s->samu_ix[ixSAM_IH_AM32_CPU_INT_STATUS] |= 1;
     liverpool_gc_ih_push_iv(&s->ih, 0, IV_SRCID_SAM, 0 /* TODO */);
 }
@@ -443,6 +444,10 @@ static void liverpool_gc_mmio_write(
         switch (s->mmio[mmSAM_IX_INDEX]) {
         case ixSAM_IH_CPU_AM32_INT:
             liverpool_gc_samu_doorbell(s, value);
+            break;
+        case ixSAM_IH_AM32_CPU_INT_ACK: 
+            //s->samu_ix[ixSAM_IH_AM32_CPU_INT_STATUS] = 0;
+            s->samu_ix[ixSAM_IH_CPU_AM32_INT_STATUS] = 0;
             break;
         default:
             index_ix = s->mmio[mmSAM_IX_INDEX];
