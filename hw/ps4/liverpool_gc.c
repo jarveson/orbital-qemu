@@ -506,7 +506,9 @@ static void liverpool_gc_mmio_write(
             value &= ~0x1;
             for (i = 0; i < s->gfx.att_cache_size; i++) {
                 if (s->gfx.att_cache[i]->base == value) {
+                    qemu_mutex_lock(&s->gfx.vk->queue_mutex);
                     orbital_update_main(s->gfx.att_cache[i]->image);
+                    qemu_mutex_unlock(&s->gfx.vk->queue_mutex);
                     break;
                 }
             }
