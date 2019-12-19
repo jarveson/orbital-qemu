@@ -182,7 +182,7 @@ void vk_init_instance(VulkanState* s, uint32_t extCount, const char **extNames)
         enabledExtensionCount = extCount;
     } else {
         enabledLayerCount = 0;
-        enabledExtensionCount = extCount - 2; // HACK: Last extension is debug-related
+        enabledExtensionCount = extCount - 1; // HACK: Last extension is debug-related
     }
     assert(check_validation_layers(enabledLayerCount, instanceLayerNames));
 

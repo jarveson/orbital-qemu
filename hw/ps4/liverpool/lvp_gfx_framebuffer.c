@@ -200,10 +200,15 @@ static vk_attachment_t* create_cb_attachment(gfx_state_t *gfx,
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &copyCmdBuf;
-    qemu_mutex_lock(&gfx->vk->queue_mutex);
+    //qemu_mutex_lock(&gfx->vk->queue_mutex);
     assert(VK_SUCCESS == vkQueueSubmit(gfx->vk->queue, 1, &submitInfo, fence));
     assert(VK_SUCCESS == vkWaitForFences(dev, 1, &fence, VK_TRUE, UINT64_MAX));
-    qemu_mutex_unlock(&gfx->vk->queue_mutex);
+    res = vkDeviceWaitIdle(dev);
+    if (res != VK_SUCCESS) {
+        fprintf(stderr, "%s: vkDeviceWaitIdle failed (%d)!", __FUNCTION__, res);
+        assert(0);
+    }
+    //qemu_mutex_unlock(&gfx->vk->queue_mutex);
 
     // Free resources
     vkDestroyFence(dev, fence, NULL);
@@ -213,9 +218,9 @@ static vk_attachment_t* create_cb_attachment(gfx_state_t *gfx,
     size_t index = gfx->att_cache_size;
     assert(index < 16);
     if (gfx->att_cache[index] != NULL) {
-        vkDestroyImage(dev, gfx->att_cache[index]->image, NULL);
-        vkDestroyImageView(dev, gfx->att_cache[index]->view, NULL);
-        vkFreeMemory(dev, gfx->att_cache[index]->mem, NULL);
+        //vkDestroyImage(dev, gfx->att_cache[index]->image, NULL);
+        //vkDestroyImageView(dev, gfx->att_cache[index]->view, NULL);
+        //vkFreeMemory(dev, gfx->att_cache[index]->mem, NULL);
     }
     gfx->att_cache[index] = att;
     gfx->att_cache_size++;

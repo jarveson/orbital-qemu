@@ -253,6 +253,7 @@ static void SetupVulkanWindowData(ImGui_ImplVulkanH_WindowData* wd, VulkanState*
 
 static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 {
+    qemu_mutex_lock(&vks->queue_mutex);
     VkResult err;
 
     VkSemaphore image_acquired_semaphore = wd->Frames[wd->FrameIndex].ImageAcquiredSemaphore;
@@ -302,7 +303,7 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
         {
             VkImageMemoryBarrier barrier = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
                 .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -334,7 +335,7 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
             VkImageMemoryBarrier barrier = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                 .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-                .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -411,10 +412,14 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 
         err = vkEndCommandBuffer(fd->CommandBuffer);
         check_vk_result(err);
-        qemu_mutex_lock(&vks->queue_mutex);
-        err = vkQueueSubmit(vks->queue, 1, &info, fd->Fence);
-        qemu_mutex_unlock(&vks->queue_mutex);
+        err = vkDeviceWaitIdle(vks->device);
         check_vk_result(err);
+        err = vkQueueSubmit(vks->queue, 1, &info, fd->Fence);
+        check_vk_result(err);
+        err = vkDeviceWaitIdle(vks->device);
+        check_vk_result(err);
+        qemu_mutex_unlock(&vks->queue_mutex);
+        
     }
 }
 

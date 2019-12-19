@@ -61,13 +61,15 @@ void liverpool_gc_gfx_cp_set_ring_location(gfx_state_t *s,
 }
 
 /* draw operations */
-static void gfx_draw_common_begin(
+static bool gfx_draw_common_begin(
     gfx_state_t *s, uint32_t vmid)
 {
     gfx_pipeline_t *pipeline;
     VkResult res;
 
     pipeline = gfx_pipeline_translate(s, vmid);
+    if (pipeline == NULL)
+        return;
     gfx_pipeline_update(pipeline, s, vmid);
     s->pipeline = pipeline;
 
@@ -88,6 +90,7 @@ static void gfx_draw_common_begin(
     vkCmdBeginRenderPass(s->vkcmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     gfx_pipeline_bind(pipeline, s, vmid);
+    return;
 }
 
 static void gfx_draw_common_end(
@@ -114,7 +117,6 @@ static void gfx_draw_common_end(
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &s->vkcmdbuf;
-    qemu_mutex_lock(&s->vk->queue_mutex);
     res = vkQueueSubmit(s->vk->queue, 1, &submitInfo, s->vkcmdfence);
     if (res != VK_SUCCESS) {
         fprintf(stderr, "%s: vkQueueSubmit failed (%d)!", __FUNCTION__, res);
@@ -125,14 +127,18 @@ static void gfx_draw_common_end(
         fprintf(stderr, "%s: vkWaitForFences failed (%d)!", __FUNCTION__, res);
         assert(0);
     }
-    qemu_mutex_unlock(&s->vk->queue_mutex);
+    res = vkDeviceWaitIdle(dev);
+    if (res != VK_SUCCESS) {
+        fprintf(stderr, "%s: vkDeviceWaitIdle failed (%d)!", __FUNCTION__, res);
+        assert(0);
+    }
 
     if (s->pipeline != NULL) {
         gfx_shader_cleanup(&s->pipeline->shader_vs, s);
         gfx_shader_cleanup(&s->pipeline->shader_ps, s);
         vkDestroyShaderModule(s->vk->device, s->pipeline->shader_ps.module, NULL);
         vkDestroyShaderModule(s->vk->device, s->pipeline->shader_vs.module, NULL);
-        vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
+        //vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
         vkDestroyDescriptorPool(s->vk->device, s->pipeline->vkdp, NULL);
         vkDestroyPipelineLayout(s->vk->device, s->pipeline->vkpl, NULL);
         vkDestroyPipeline(s->vk->device, s->pipeline->vkp, NULL);
@@ -150,9 +156,11 @@ static void gfx_draw_index_auto(
     num_instances = s->mmio[mmVGT_NUM_INSTANCES];
     num_indices = 4; // HACK: Some draws specify 3 indices, but 4 should be used.
 
+    qemu_mutex_lock(&s->vk->queue_mutex);
     gfx_draw_common_begin(s, vmid);
     vkCmdDraw(s->vkcmdbuf, num_indices, num_instances, 0, 0);
     gfx_draw_common_end(s, vmid);
+    qemu_mutex_unlock(&s->vk->queue_mutex);
 }
 
 /* cp packet operations */
