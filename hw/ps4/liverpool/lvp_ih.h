@@ -21,6 +21,7 @@
 #define HW_PS4_LIVERPOOL_GC_IH_H
 
 #include "qemu/osdep.h"
+#include "qemu/thread.h"
 
 // IV SRC identifiers
 #define IV_SRCID_DCE_CRTC0               0x01  // 1
@@ -84,6 +85,7 @@ typedef struct gart_state_t gart_state_t;
 typedef struct ih_state_t {
     PCIDevice* dev;
     gart_state_t *gart;
+    QemuMutex mutex;
 
     uint32_t vmid_lut[16];
     uint32_t rb_cntl;

@@ -33,7 +33,9 @@ static void ih_rb_push(ih_state_t *s,
     addr = ((uint64_t)s->rb_base << 8) + s->rb_wptr;
     stl_le_phys(gart->as[0], addr, value);
     s->rb_wptr += 4;
-    s->rb_wptr &= 0x1FFFF; // IH_RB is 0x20000 bytes in size
+     // for now this is what orbis seems to 'loop' on internally, 
+     // i feel like there should be a register for this...
+    s->rb_wptr %= 0x10000;
     // Update WPTR
     stl_le_phys(gart->as[0], s->rb_wptr_addr, s->rb_wptr);
 }
@@ -46,12 +48,15 @@ void liverpool_gc_ih_init(ih_state_t *s,
     s->status_idle = true;
     s->status_input_idle = true;
     s->status_rb_idle = true;
+    qemu_mutex_init(&s->mutex);
 }
 
 void liverpool_gc_ih_push_iv(ih_state_t *s,
     uint32_t vmid, uint32_t src_id, uint32_t src_data)
 {
+    qemu_mutex_lock(&s->mutex);
     PCIDevice* dev = s->dev;
+
     uint64_t msi_addr;
     uint32_t msi_data;
     uint16_t pasid;
@@ -67,6 +72,7 @@ void liverpool_gc_ih_push_iv(ih_state_t *s,
     ih_rb_push(s, src_data);
     ih_rb_push(s, ((pasid << 16) | (vmid << 8) | ringid));
     ih_rb_push(s, 0 /* TODO: timestamp & 0xFFFFFFF */);
+    qemu_mutex_unlock(&s->mutex);
 
     /* Trigger MSI */
     msi_addr = pci_get_long(&dev->config[dev->msi_cap + PCI_MSI_ADDRESS_HI]);
