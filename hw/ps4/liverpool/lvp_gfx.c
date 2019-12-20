@@ -127,18 +127,13 @@ static void gfx_draw_common_end(
         fprintf(stderr, "%s: vkWaitForFences failed (%d)!", __FUNCTION__, res);
         assert(0);
     }
-    res = vkDeviceWaitIdle(dev);
-    if (res != VK_SUCCESS) {
-        fprintf(stderr, "%s: vkDeviceWaitIdle failed (%d)!", __FUNCTION__, res);
-        assert(0);
-    }
 
     if (s->pipeline != NULL) {
         gfx_shader_cleanup(&s->pipeline->shader_vs, s);
         gfx_shader_cleanup(&s->pipeline->shader_ps, s);
         vkDestroyShaderModule(s->vk->device, s->pipeline->shader_ps.module, NULL);
         vkDestroyShaderModule(s->vk->device, s->pipeline->shader_vs.module, NULL);
-        //vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
+        vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
         vkDestroyDescriptorPool(s->vk->device, s->pipeline->vkdp, NULL);
         vkDestroyPipelineLayout(s->vk->device, s->pipeline->vkpl, NULL);
         vkDestroyPipeline(s->vk->device, s->pipeline->vkp, NULL);

@@ -412,11 +412,7 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 
         err = vkEndCommandBuffer(fd->CommandBuffer);
         check_vk_result(err);
-        err = vkDeviceWaitIdle(vks->device);
-        check_vk_result(err);
         err = vkQueueSubmit(vks->queue, 1, &info, fd->Fence);
-        check_vk_result(err);
-        err = vkDeviceWaitIdle(vks->device);
         check_vk_result(err);
         qemu_mutex_unlock(&vks->queue_mutex);
         
