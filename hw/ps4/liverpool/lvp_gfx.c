@@ -603,12 +603,13 @@ void *liverpool_gc_gfx_cp_thread(void *arg)
     }
 
     while (true) {
-        if (rb0->rptr < rb0->wptr) {
+        if (rb0->rptr != rb0->wptr) {
             rb0->rptr += cp_handle_ringbuffer(s, rb0);
         }
-        if (rb1->rptr < rb1->wptr) {
+        if (rb1->rptr != rb1->wptr) {
             rb1->rptr += cp_handle_ringbuffer(s, rb1);
         }
+        // todo: should be rb size
         rb0->rptr %= 0x20000;
         rb1->rptr %= 0x20000;
         usleep(1000);
