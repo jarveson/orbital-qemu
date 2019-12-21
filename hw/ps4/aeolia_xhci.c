@@ -1247,7 +1247,8 @@ static int xhci_ep_nuke_one_xfer(XHCITransfer *t, TRBCCode report)
     }
 
     if (t->running_async) {
-        usb_cancel_packet(&t->packet);
+        if (usb_packet_is_inflight(&t->packet))
+            usb_cancel_packet(&t->packet);
         t->running_async = 0;
         killed = 1;
     }
