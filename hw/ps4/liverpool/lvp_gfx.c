@@ -609,6 +609,8 @@ void *liverpool_gc_gfx_cp_thread(void *arg)
         if (rb1->rptr < rb1->wptr) {
             rb1->rptr += cp_handle_ringbuffer(s, rb1);
         }
+        rb0->rptr %= 0x20000;
+        rb1->rptr %= 0x20000;
         usleep(1000);
     }
     return NULL;
