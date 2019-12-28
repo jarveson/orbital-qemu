@@ -234,6 +234,16 @@ static void usb_host_del_fd(int fd, void *user_data)
 
 #endif /* !CONFIG_WIN32 */
 
+static int libusb_win32_polling(void* opaque){ 
+
+    libusb_context* c = opaque;
+
+    struct timeval tv = {0, 0};
+    libusb_handle_events_timeout_completed(c, &tv , NULL);
+
+    return 0;
+}
+
 static int usb_host_init(void)
 {
 #ifndef CONFIG_WIN32
@@ -252,6 +262,7 @@ static int usb_host_init(void)
 #ifdef CONFIG_WIN32
     /* FIXME: add support for Windows. */
     libusb_set_option(NULL, LIBUSB_OPTION_USE_USBDK);
+    qemu_add_polling_cb(libusb_win32_polling, ctx);
 #else
     libusb_set_pollfd_notifiers(ctx, usb_host_add_fd,
                                 usb_host_del_fd,
@@ -647,10 +658,6 @@ static void usb_host_iso_data_in(USBHostDevice *s, USBPacket *p)
     if (disconnect) {
         usb_host_nodev(s);
     }
-    else {
-        struct timeval tv = {30, 0};
-        libusb_handle_events_timeout_completed(ctx, &tv , NULL);
-    }
 }
 
 static void usb_host_iso_data_out(USBHostDevice *s, USBPacket *p)
@@ -709,9 +716,6 @@ static void usb_host_iso_data_out(USBHostDevice *s, USBPacket *p)
         }
         QTAILQ_INSERT_TAIL(&ring->inflight, xfer, next);
     }
-    struct timeval tv = {30, 0};
-    libusb_handle_events_timeout_completed(ctx, &tv , NULL);
-
     if (disconnect) {
         usb_host_nodev(s);
     }
@@ -1342,11 +1346,6 @@ static void usb_host_handle_control(USBDevice *udev, USBPacket *p,
     }
 
     p->status = USB_RET_ASYNC;
-
-    usb_packet_set_state(p, USB_PACKET_ASYNC);
-    QTAILQ_INSERT_TAIL(&p->ep->queue, p, queue);
-    struct timeval tv = {30, 0};
-    libusb_handle_events_timeout_completed(ctx, &tv , NULL);
 }
 
 static void usb_host_handle_data(USBDevice *udev, USBPacket *p)
@@ -1441,10 +1440,6 @@ static void usb_host_handle_data(USBDevice *udev, USBPacket *p)
     }
 
     p->status = USB_RET_ASYNC;
-    usb_packet_set_state(p, USB_PACKET_ASYNC);
-    QTAILQ_INSERT_TAIL(&p->ep->queue, p, queue);
-    struct timeval tv = {30, 0};
-    libusb_handle_events_timeout_completed(ctx, &tv , NULL);
 }
 
 static void usb_host_flush_ep_queue(USBDevice *dev, USBEndpoint *ep)
