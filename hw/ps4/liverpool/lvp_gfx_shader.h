@@ -77,4 +77,6 @@ void gfx_shader_translate_descriptors(gfx_shader_t *shader,
 void gfx_shader_update(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     VkDescriptorSet descSet);
 
+void gfx_shader_cleanup(gfx_shader_t *shader, gfx_state_t *gfx);
+
 #endif /* HW_PS4_LIVERPOOL_GC_GFX_SHADER_H */

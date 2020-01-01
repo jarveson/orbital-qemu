@@ -380,17 +380,46 @@ typedef struct icc_query_board_version_t {
     uint32_t emc_version_edition;
     uint32_t emc_version_sec_dsc;
     uint32_t emc_version_reserved;
+
+    uint16_t syscon_version_major;
+    uint16_t syscon_version_minor;
+    uint16_t syscon_version_branch;
+    uint16_t syscon_version_revision;
+
+    uint8_t syscon_version_modify;
+    uint8_t syscon_version_edition;
+    uint8_t syscon_version_sec_dsc;
+    uint8_t syscon_version_reserved;
 } icc_query_board_version_t;
+
+_Static_assert(sizeof(icc_query_board_version_t) == 0x2C, "invalid query board version size");
+
+typedef struct icc_query_nvram_t {
+    uint16_t addr; 
+    uint16_t len; // <= 0x400
+
+} icc_query_nvram_t;
 
 static void icc_query_board_version(
     AeoliaPCIEState *s, aeolia_icc_message_t* reply)
 {
     icc_query_board_version_t* data = (void*)&reply->data;
 
+    memset(data, 0, sizeof(icc_query_board_version_t));
+
     data->emc_version_major = 0x0002;
     data->emc_version_minor = 0x0018;
     data->emc_version_branch = 0x0001;
     data->emc_version_revision = 0x0000;
+
+    // numbers are based on firmware version found in 5.00 recovery
+    data->syscon_version_major = 0x0100;
+    data->syscon_version_minor = 0x0;
+    data->syscon_version_branch = 0x7;
+    data->syscon_version_revision = 0x10;
+    data->syscon_version_modify = 0x45;
+    data->syscon_version_edition = 0x54;
+    data->syscon_version_reserved = 0x0;
 
     reply->result = 0;
     reply->length = sizeof(aeolia_icc_message_t) +
@@ -401,6 +430,34 @@ static void icc_query_buttons_state(
     AeoliaPCIEState *s, aeolia_icc_message_t* reply)
 {
     printf("qemu: ICC: icc_query_buttons_state\n");
+}
+
+static void icc_query_nvram_write(AeoliaPCIEState *s, const aeolia_icc_message_t *query) {
+    const icc_query_nvram_t *nvramquery = (void*)&query->data;
+    printf("qemu: ICC: icc_query_nvram_write addr: 0x%X, len:0x%X\n", nvramquery->addr, nvramquery->len);
+}
+
+static void icc_query_nvram_read(AeoliaPCIEState *s, const aeolia_icc_message_t *query, aeolia_icc_message_t *reply) {
+    const icc_query_nvram_t *nvramquery = (void*)&query->data;
+
+    printf("qemu: ICC: icc_query_nvram_read: addr 0x%X, len:0x%X\n", nvramquery->addr, nvramquery->len);
+
+    switch(nvramquery->addr) {
+        case 0x18: // sceKernelHwHasWlanBt second bit as 1 for none
+            reply->data[0] = 2;
+            reply->result = 0;
+            reply->length = sizeof(aeolia_icc_message_t) + 1;
+            break;
+        case 0x20: // init_safe_mode
+        case 0x21: // sysctl_machdep_cavern_dvt1_init_update current mode
+        case 0x30: // wlan mode?
+        case 0x38: // something gbe
+        case 0x50: // ssb_rtc_init_exclock
+        case 0xA0: // get_icc_max
+        default:
+        // ignore
+        break;
+    }
 }
 
 static void icc_query(AeoliaPCIEState *s)
@@ -468,20 +525,18 @@ static void icc_query(AeoliaPCIEState *s)
             printf("qemu: ICC: Unknown unk_0D query 0x%04X!\n", query->minor);
         }
         break;
-#if 0
     case ICC_CMD_QUERY_NVRAM:
         switch (query->minor) {
         case ICC_CMD_QUERY_NVRAM_OP_WRITE:
-            icc_query_nvram_write(s, reply);
+            icc_query_nvram_write(s, query);
             break;
         case ICC_CMD_QUERY_NVRAM_OP_READ:
-            icc_query_nvram_read(s, reply);
+            icc_query_nvram_read(s, query, reply);
             break;
         default:
             printf("qemu: ICC: Unknown NVRAM query 0x%04X!\n", query->minor);
         }
         break;
-#endif
     default:
         printf("qemu: ICC: Unknown query %#x!\n", query->major);
     }

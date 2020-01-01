@@ -491,10 +491,8 @@ static void gfx_shader_update_th(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &copyCmdBuf;
-    qemu_mutex_lock(&gfx->vk->queue_mutex);
     assert(VK_SUCCESS == vkQueueSubmit(gfx->vk->queue, 1, &submitInfo, fence));
     assert(VK_SUCCESS == vkWaitForFences(dev, 1, &fence, VK_TRUE, UINT64_MAX));
-    qemu_mutex_unlock(&gfx->vk->queue_mutex);
 
     // Free resources
     vkDestroyFence(dev, fence, NULL);
@@ -536,6 +534,39 @@ static void gfx_shader_update_sh(gfx_shader_t *shader, uint32_t vmid, gfx_state_
         fprintf(stderr, "%s: vkCreateSampler failed!\n", __FUNCTION__);
         return;
     }
+}
+
+void gfx_shader_cleanup(gfx_shader_t *shader, gfx_state_t *gfx) {
+    VkDevice dev = gfx->vk->device;
+
+    //fprintf(stderr, "vhcount: 0x%x\n", shader->analyzer.res_vh_count);
+
+    for (int i=0; i < shader->analyzer.res_vh_count; ++i) {
+        vk_resource_vh_t* vkres = &shader->vk_res_vh[i];
+        if (vkres->buf != VK_NULL_HANDLE) {
+            vkDestroyBuffer(dev, vkres->buf, NULL);
+            vkFreeMemory(dev, vkres->mem, NULL);
+            vkres->buf = VK_NULL_HANDLE;
+        }
+    }
+
+    for (int i=0; i < shader->analyzer.res_sh_count; ++i) {
+        vk_resource_sh_t* vkres = &shader->vk_res_sh[i];
+        if (vkres->sampler != VK_NULL_HANDLE) {
+            vkDestroySampler(dev, vkres->sampler, NULL);
+            vkres->sampler = VK_NULL_HANDLE;
+        }
+    }
+
+    for (int i=0; i < shader->analyzer.res_th_count; ++i) {
+        vk_resource_th_t *vkres = &shader->vk_res_th[i];
+        if (vkres->image != VK_NULL_HANDLE) {
+            vkDestroyImage(dev, vkres->image, NULL);
+            vkFreeMemory(dev, vkres->mem, NULL);
+            vkres->image = VK_NULL_HANDLE;
+        }
+    }
+    //fprintf(stderr, "done: 0x%x\n", shader->analyzer.res_vh_count);
 }
 
 void gfx_shader_update(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,

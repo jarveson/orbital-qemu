@@ -253,6 +253,7 @@ static void SetupVulkanWindowData(ImGui_ImplVulkanH_WindowData* wd, VulkanState*
 
 static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 {
+    qemu_mutex_lock(&vks->queue_mutex);
     VkResult err;
 
     VkSemaphore image_acquired_semaphore = wd->Frames[wd->FrameIndex].ImageAcquiredSemaphore;
@@ -302,7 +303,7 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
         {
             VkImageMemoryBarrier barrier = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
                 .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -334,7 +335,7 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
             VkImageMemoryBarrier barrier = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                 .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-                .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -411,10 +412,10 @@ static void FrameRender(ImGui_ImplVulkanH_WindowData* wd, VulkanState* vks)
 
         err = vkEndCommandBuffer(fd->CommandBuffer);
         check_vk_result(err);
-        qemu_mutex_lock(&vks->queue_mutex);
         err = vkQueueSubmit(vks->queue, 1, &info, fd->Fence);
-        qemu_mutex_unlock(&vks->queue_mutex);
         check_vk_result(err);
+        qemu_mutex_unlock(&vks->queue_mutex);
+        
     }
 }
 
@@ -549,16 +550,15 @@ static void* orbital_display_main(void* arg)
         error_report("SDL_Vulkan_GetInstanceExtensions failed");
     }
 
-    const char **extensionNames = (const char **)malloc((count + 3) * sizeof(char*));
+    const char **extensionNames = (const char **)malloc((count + 2) * sizeof(char*));
     extensionNames[count + 0] = VK_KHR_SURFACE_EXTENSION_NAME;
     extensionNames[count + 1] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-    extensionNames[count + 2] = VK_EXT_DEBUG_REPORT_EXTENSION_NAME;
     if (!SDL_Vulkan_GetInstanceExtensions(ui.sdl_window, &count, &extensionNames[0])) {
         error_report("SDL_Vulkan_GetInstanceExtensions returned false with extensions");
         return NULL;
     }
 
-    vk_init_instance(vks, count+3, extensionNames);
+    vk_init_instance(vks, count+2, extensionNames);
     if (!SDL_Vulkan_CreateSurface(ui.sdl_window, vks->instance, &vks->surface)) {
         printf("SDL_Vulkan_CreateSurface failed: %s\n", SDL_GetError());
         return NULL;

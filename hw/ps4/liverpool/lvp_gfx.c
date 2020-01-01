@@ -24,6 +24,7 @@
 #include "hw/ps4/liverpool/pm4.h"
 #include "hw/ps4/macros.h"
 #include "gca/gfx_7_2_d.h"
+#include "gca/gfx_7_2_sh_mask.h"
 #include "ui/orbital.h"
 
 #include "exec/address-spaces.h"
@@ -60,23 +61,15 @@ void liverpool_gc_gfx_cp_set_ring_location(gfx_state_t *s,
 }
 
 /* draw operations */
-static void gfx_draw_common_begin(
+static bool gfx_draw_common_begin(
     gfx_state_t *s, uint32_t vmid)
 {
     gfx_pipeline_t *pipeline;
     VkResult res;
-    
-    if (s->pipeline != NULL) {
-        vkDestroyShaderModule(s->vk->device, s->pipeline->shader_ps.module, NULL);
-        vkDestroyShaderModule(s->vk->device, s->pipeline->shader_vs.module, NULL);
-        vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
-        vkDestroyDescriptorPool(s->vk->device, s->pipeline->vkdp, NULL);
-        vkDestroyPipelineLayout(s->vk->device, s->pipeline->vkpl, NULL);
-        vkDestroyPipeline(s->vk->device, s->pipeline->vkp, NULL);
-        free(s->pipeline);
-    }
 
     pipeline = gfx_pipeline_translate(s, vmid);
+    if (pipeline == NULL)
+        return;
     gfx_pipeline_update(pipeline, s, vmid);
     s->pipeline = pipeline;
 
@@ -97,6 +90,7 @@ static void gfx_draw_common_begin(
     vkCmdBeginRenderPass(s->vkcmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     gfx_pipeline_bind(pipeline, s, vmid);
+    return;
 }
 
 static void gfx_draw_common_end(
@@ -123,7 +117,6 @@ static void gfx_draw_common_end(
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &s->vkcmdbuf;
-    qemu_mutex_lock(&s->vk->queue_mutex);
     res = vkQueueSubmit(s->vk->queue, 1, &submitInfo, s->vkcmdfence);
     if (res != VK_SUCCESS) {
         fprintf(stderr, "%s: vkQueueSubmit failed (%d)!", __FUNCTION__, res);
@@ -134,7 +127,18 @@ static void gfx_draw_common_end(
         fprintf(stderr, "%s: vkWaitForFences failed (%d)!", __FUNCTION__, res);
         assert(0);
     }
-    qemu_mutex_unlock(&s->vk->queue_mutex);
+
+    if (s->pipeline != NULL) {
+        gfx_shader_cleanup(&s->pipeline->shader_vs, s);
+        gfx_shader_cleanup(&s->pipeline->shader_ps, s);
+        vkDestroyShaderModule(s->vk->device, s->pipeline->shader_ps.module, NULL);
+        vkDestroyShaderModule(s->vk->device, s->pipeline->shader_vs.module, NULL);
+        vkDestroyFramebuffer(s->vk->device, s->pipeline->framebuffer.vkfb, NULL);
+        vkDestroyDescriptorPool(s->vk->device, s->pipeline->vkdp, NULL);
+        vkDestroyPipelineLayout(s->vk->device, s->pipeline->vkpl, NULL);
+        vkDestroyPipeline(s->vk->device, s->pipeline->vkp, NULL);
+        free(s->pipeline);
+    }
 }
 
 static void gfx_draw_index_auto(
@@ -147,9 +151,11 @@ static void gfx_draw_index_auto(
     num_instances = s->mmio[mmVGT_NUM_INSTANCES];
     num_indices = 4; // HACK: Some draws specify 3 indices, but 4 should be used.
 
+    qemu_mutex_lock(&s->vk->queue_mutex);
     gfx_draw_common_begin(s, vmid);
     vkCmdDraw(s->vkcmdbuf, num_indices, num_instances, 0, 0);
     gfx_draw_common_end(s, vmid);
+    qemu_mutex_unlock(&s->vk->queue_mutex);
 }
 
 /* cp packet operations */
@@ -514,8 +520,10 @@ static uint32_t cp_handle_pm4_type3(
     // todo: This is a bit hacky for sending idle, but it at least takes care of letting orbis
     // know for now, there also *should* be some mmio register checks that 'enable' this
     // but until the emu progresses farther its tough to tell what is needed
-    if (itop == PM4_IT_DRAW_INDEX_AUTO)
+    uint32_t flag = GRBM_INT_CNTL__GUI_IDLE_INT_ENABLE_MASK;
+    if (itop == PM4_IT_DRAW_INDEX_AUTO && (s->mmio[mmGRBM_INT_CNTL] & flag)) {
         liverpool_gc_ih_push_iv(s->ih, 0, IV_SRCID_UNK3_GUI_IDLE, 0);
+    }
     return count + 1;
 }
 
@@ -595,12 +603,15 @@ void *liverpool_gc_gfx_cp_thread(void *arg)
     }
 
     while (true) {
-        if (rb0->rptr < rb0->wptr) {
+        if (rb0->rptr != rb0->wptr) {
             rb0->rptr += cp_handle_ringbuffer(s, rb0);
         }
-        if (rb1->rptr < rb1->wptr) {
+        if (rb1->rptr != rb1->wptr) {
             rb1->rptr += cp_handle_ringbuffer(s, rb1);
         }
+        // todo: should be rb size
+        rb0->rptr %= 0x20000;
+        rb1->rptr %= 0x20000;
         usleep(1000);
     }
     return NULL;

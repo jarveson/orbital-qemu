@@ -949,7 +949,7 @@ static inline uint64_t pte_override_page_mask(uint64_t pte)
 
 static inline uint64_t pte_get_page_mask(uint64_t oldlevel)
 {
-    return ~((1UL << ((oldlevel * 9) + 3)) - 1);
+    return ~((1ULL << ((oldlevel * 9) + 3)) - 1);
 }
 
 static inline uint64_t liverpool_iommu_get_pte_entry(LiverpoolIOMMUState *s, uint64_t pte_addr,
