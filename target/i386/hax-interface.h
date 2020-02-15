@@ -218,7 +218,19 @@ struct vcpu_state_t {
     uint32_t _activity_state;
     uint32_t pad;
     interruptibility_state_t _interruptibility_state;
+    uint64_t _cr8;
 };
+
+#define HAX_DEBUG_ENABLE     (1 << 0)
+#define HAX_DEBUG_STEP       (1 << 1)
+#define HAX_DEBUG_USE_SW_BP  (1 << 2)
+#define HAX_DEBUG_USE_HW_BP  (1 << 3)
+
+struct hax_debug_t {
+    uint32_t control;
+    uint64_t dr[8];
+} __attribute__ ((__packed__));
+
 
 /* HAX exit status */
 enum exit_status {
@@ -227,7 +239,7 @@ enum exit_status {
     /* MMIO instruction emulation */
     HAX_EXIT_MMIO,
     /* QEMU emulation mode request, currently means guest enter non-PG mode */
-    HAX_EXIT_REAL,
+    HAX_EXIT_REALMODE,
     /*
      * Interrupt window open, qemu can inject interrupt now
      * Also used when signal pending since at that time qemu usually need
@@ -235,7 +247,7 @@ enum exit_status {
      */
     HAX_EXIT_INTERRUPT,
     /* Unknown vmexit, mostly trigger reboot */
-    HAX_EXIT_UNKNOWN_VMEXIT,
+    HAX_EXIT_UNKNOWN,
     /* HALT from guest */
     HAX_EXIT_HLT,
     /* Reboot request, like because of tripple fault in guest */
@@ -243,6 +255,8 @@ enum exit_status {
     /* the vcpu is now only paused when destroy, so simply return to hax */
     HAX_EXIT_PAUSED,
     HAX_EXIT_FAST_MMIO,
+    HAX_EXIT_PAGEFAULT,
+    HAX_EXIT_DEBUG
 };
 
 /*
@@ -278,7 +292,25 @@ struct hax_tunnel {
             uint64_t gla;
         } mmio;
         struct {
+            uint64_t gpa;
+#define HAX_PAGEFAULT_ACC_R  (1 << 0)
+#define HAX_PAGEFAULT_ACC_W  (1 << 1)
+#define HAX_PAGEFAULT_ACC_X  (1 << 2)
+#define HAX_PAGEFAULT_PERM_R (1 << 4)
+#define HAX_PAGEFAULT_PERM_W (1 << 5)
+#define HAX_PAGEFAULT_PERM_X (1 << 6)
+            uint32_t flags;
+            uint32_t reserved1;
+            uint64_t reserved2;
+        } pagefault;
+        struct {
+            uint64_t dummy;
         } state;
+        struct hax_exit_debug_t {
+            uint64_t rip;
+            uint64_t dr6;
+            uint64_t dr7;
+        } debug;
     };
 } __attribute__ ((__packed__));
 
@@ -335,6 +367,7 @@ struct hax_set_ram_info {
 #define HAX_CAP_MEMQUOTA           0x2
 #define HAX_CAP_UG                 0x4
 #define HAX_CAP_64BIT_RAMBLOCK     0x8
+#define HAX_CAP_DEBUG              (1 << 7)
 
 struct hax_capabilityinfo {
     /* bit 0: 1 - working
