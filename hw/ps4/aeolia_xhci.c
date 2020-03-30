@@ -808,6 +808,8 @@ static TRBType xhci_ring_fetch(XHCIState *xhci, XHCIRing *ring, XHCITRB *trb,
             if (trb->control & TRB_LK_TC) {
                 ring->ccs = !ring->ccs;
             }
+            if ((trb->control & TRB_TR_IOC))
+                return type;
         }
     }
 }
@@ -861,8 +863,11 @@ static int xhci_ring_chain_length(XHCIState *xhci, const XHCIRing *ring, bool *o
         }
 
         if (!control_td_set && !(trb.control & TRB_TR_CH)) {
-            return length;
+            //return length;
         }
+
+        if (length == 1 && type == TR_STATUS)
+            return length;
     }
 }
 
@@ -1572,6 +1577,10 @@ static void xhci_xfer_report(XHCITransfer *xfer)
             reported = 0;
             shortpkt = 0;
             break;
+        case TR_LINK:
+            reported = 0;
+            shortpkt = 0;
+            break;
         }
 
         if (!reported && ((trb->control & TRB_TR_IOC) ||
@@ -1579,13 +1588,10 @@ static void xhci_xfer_report(XHCITransfer *xfer)
                           (xfer->status != CC_SUCCESS && left == 0))) {
             event.slotid = xfer->epctx->slotid;
             event.epid = xfer->epctx->epid;
-            if (xfer->status == CC_SUCCESS)
-                event.length = 0;
-            else
-                event.length = (trb->status & 0x1ffff) - chunk;
+            event.length = (trb->status & 0x1ffff) - chunk;
             event.flags = 0;
             event.ptr = trb->addr;
-            if (xfer->status == CC_SUCCESS || TRB_TYPE(*trb) == TR_LINK) {
+            if (xfer->status == CC_SUCCESS) {
                 event.ccode = shortpkt ? CC_SHORT_PACKET : CC_SUCCESS;
             } else {
                 event.ccode = xfer->status;
@@ -1733,9 +1739,11 @@ static int xhci_fire_ctl_transfer(XHCIState *xhci, XHCITransfer *xfer)
     if (TRB_TYPE(*trb_setup) == TR_STATUS && xfer->trb_count == 1) {
         xfer->complete = true;
         xfer->status = CC_SUCCESS;
-        xhci_xfer_report(xfer);
+        xhci_try_complete_packet(xfer);
         return;
     }
+    
+    assert(TRB_TYPE(*trb_setup) == TR_SETUP);
 
     /* do some sanity checks */
     /*if (TRB_TYPE(*trb_setup) != TR_SETUP) {
@@ -2003,14 +2011,14 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
         for (i = 0; i < length; i++) {
             TRBType type;
             type = xhci_ring_fetch(xhci, ring, &xfer->trbs[i], NULL);
-            //assert(type);
+            assert(type);
         }
         xfer->streamid = streamid;
 
         if (onlyLink) {
             xfer->complete = true;
             xfer->status = CC_SUCCESS;
-            xhci_xfer_report(xfer);
+            xhci_try_complete_packet(xfer);
         }
         else if (epctx->epid == 1) {
             xhci_fire_ctl_transfer(xhci, xfer);
