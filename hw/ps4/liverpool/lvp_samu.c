@@ -175,7 +175,7 @@ static void samu_packet_ccp_aes(samu_state_t *s,
     out_size = data_size;
 
     in_addr = query_ccp->aes.in_addr;
-    in_data = samu_map(s, in_addr, &in_size, true);
+    in_data = samu_map(s, in_addr, &in_size, false);
 
     if (query_ccp->opcode & CCP_FLAG_SLOT_OUT) {
         out_slot = *(uint32_t*)&query_ccp->aes.out_addr;
@@ -195,7 +195,7 @@ static void samu_packet_ccp_aes(samu_state_t *s,
     // TODO/HACK: We don't have keys, so use hardcoded blobs instead
     liverpool_gc_samu_fakedecrypt(out_data, in_data, data_size);
 
-    samu_unmap(s, in_data, in_size, true, in_size);
+    samu_unmap(s, in_data, in_size, false, in_size);
     if (!(query_ccp->opcode & CCP_FLAG_SLOT_OUT)) {
         samu_unmap(s, out_data, out_size, true, out_size);
     }
@@ -221,7 +221,7 @@ static void samu_packet_ccp_xts(samu_state_t *s,
     out_size = data_size;
 
     in_addr = query_ccp->aes.in_addr;
-    in_data = samu_map(s, in_addr, &in_size, true);
+    in_data = samu_map(s, in_addr, &in_size, false);
 
     if (query_ccp->opcode & CCP_FLAG_SLOT_OUT) {
         out_slot = *(uint32_t*)&query_ccp->xts.out_addr;
@@ -239,6 +239,11 @@ static void samu_packet_ccp_xts(samu_state_t *s,
     }
 
     memcpy(out_data, in_data, data_size);
+
+    if (!(query_ccp->opcode & CCP_FLAG_SLOT_OUT)) {
+        samu_unmap(s, out_data, out_size, true, out_size);
+    }
+    samu_unmap(s, in_data, in_size, false, in_size);
 }
 
 static void samu_packet_ccp_sha(samu_state_t *s,
@@ -500,41 +505,69 @@ static uint32_t samu_packet_rand(samu_state_t *s,
 void liverpool_gc_samu_packet(samu_state_t *s,
     uint64_t query_addr, uint64_t reply_addr)
 {
-    uint64_t packet_length = 0x1000;
+    uint64_t packet_length = 0xC0;
     samu_packet_t *query, *reply;
     hwaddr query_len = packet_length;
     hwaddr reply_len = packet_length;
     uint32_t status = 0;
 
     reply_addr = query_addr & 0xFFF00000; // TODO: Where does this address come from?
-    query = (samu_packet_t*)samu_map(s, query_addr, &query_len, true);
+    query = (samu_packet_t*)samu_map(s, query_addr, &query_len, false);
     reply = (samu_packet_t*)samu_map(s, reply_addr, &reply_len, true);
-    trace_samu_packet(query);
 
-    memset(reply, 0, packet_length);
-    reply->command = query->command;
-    reply->message_id = query->message_id;
-    reply->extended_msgs = query->extended_msgs;
-
-    switch (query->command) {
-    case SAMU_CMD_SERVICE_SPAWN:
-        status = samu_packet_spawn(s, query, reply);
-        break;
-    case SAMU_CMD_SERVICE_CCP:
-        status = samu_packet_ccp(s, query, reply);
-        break;
-    case SAMU_CMD_SERVICE_MAILBOX:
-        status = samu_packet_mailbox(s, query, reply);
-        break;
-    case SAMU_CMD_SERVICE_RAND:
-        status = samu_packet_rand(s, query, reply);
-        break;
-    default:
-        printf("Unknown SAMU command %d\n", query->command);
+    if (query->message_id == 0x200000000000000) {
+        // something with keygen context?
+        printf("samu-packet: Unknown message id!\n");
     }
-    reply->status = status;
+    else if (query->message_id == 0x100000000000000) {
+        printf("samu-packet: split request\n");
+    }
 
-    samu_unmap(s, query, query_len, true, query_len);
+    memset(reply, 0, 0xC0);
+
+    // samu address allows 40 bits for addr
+    uint64_t curPacketAddr = query_addr & 0xFFFFFFFFFF;
+    while (curPacketAddr != 0 && curPacketAddr != 0xFFFFFFFFFF) {
+        // not fully sure how to handle multiple packets...
+        // may have to actually interrupt for each one...idk,
+        // but for now and ease of implementation, each packet reply overwrites the last, which should be fine
+        // as the message_id is only valid for last packet...the problem looks to be certain types of packets
+        // actually have a code path for message_id being one of the flagged ones in the kernel.....
+
+        hwaddr curPacketLen = 0xC0;
+        samu_packet_t* curPacket = (samu_packet_t*)samu_map(s, curPacketAddr, &curPacketLen, false);
+        trace_samu_packet(curPacket);
+
+        reply->command = curPacket->command;
+        reply->message_id = curPacket->message_id;
+        reply->extended_msgs = curPacket->extended_msgs;
+        
+        switch (curPacket->command) {
+        case SAMU_CMD_SERVICE_SPAWN:
+            status = samu_packet_spawn(s, curPacket, reply);
+            break;
+        case SAMU_CMD_SERVICE_CCP:
+            status = samu_packet_ccp(s, curPacket, reply);
+            break;
+        case SAMU_CMD_SERVICE_MAILBOX:
+            status = samu_packet_mailbox(s, curPacket, reply);
+            break;
+        case SAMU_CMD_SERVICE_RAND:
+            status = samu_packet_rand(s, curPacket, reply);
+            break;
+        default:
+            printf("Unknown SAMU command %d\n", curPacket->command);
+        }
+        reply->status = status;
+
+        samu_unmap(s, curPacket, curPacketLen, false, curPacketLen);
+        
+        // bottom 40 bits of extended_msgs will contain -1, sometimes 0, or the 'next packet' in the split request
+        // theres still data in left over bits, also this 'feature' might only be supported on SERVICE_CCP
+        curPacketAddr = curPacket->extended_msgs & 0xFFFFFFFFFF;
+    }
+
+    samu_unmap(s, query, query_len, false, query_len);
     samu_unmap(s, reply, reply_len, true, reply_len);
 }
 

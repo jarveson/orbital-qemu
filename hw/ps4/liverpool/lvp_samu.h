@@ -86,6 +86,8 @@ typedef struct samu_packet_t {
     } data;
 } samu_packet_t;
 
+_Static_assert(sizeof(samu_packet_t) <= 0xC0, "samu_packet_t size too big");
+
 /* debugging */
 void trace_samu_packet(const samu_packet_t* packet);
 
