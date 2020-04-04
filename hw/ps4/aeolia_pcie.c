@@ -449,6 +449,11 @@ static void icc_query_nvram_read(AeoliaPCIEState *s, const aeolia_icc_message_t 
             reply->length = sizeof(aeolia_icc_message_t) + 1;
             break;
         case 0x20: // init_safe_mode
+            // set to > 0 to boot into safe mode
+            reply->data[0] = 1;
+            reply->result = 0;
+            reply->length = sizeof(aeolia_icc_message_t) + 1;
+            break;
         case 0x21: // sysctl_machdep_cavern_dvt1_init_update current mode
         case 0x30: // wlan mode?
         case 0x38: // something gbe
