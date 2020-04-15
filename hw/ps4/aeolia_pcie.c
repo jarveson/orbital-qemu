@@ -101,7 +101,14 @@
 #define ICC_CMD_QUERY_LOAD_CONTEXT                            0x0C
 #define ICC_CMD_QUERY_UNK0D                                   0x0D // icc_configuration_get_devlan_setting
 #define ICC_CMD_QUERY_UNK70                                   0x70 // sceControlEmcHdmiService
-#define ICC_CMD_QUERY_SNVRAM_READ                             0x8D
+#define ICC_CMD_QUERY_FW_UPDATE                               0x8C
+#define ICC_CMD_QUERY_FW_UPDATE_OP_BEGIN_TRANSFER           0x0000
+#define ICC_CMD_QUERY_FW_UPDATE_OP_TRANSFER_DATA            0x0001
+#define ICC_CMD_QUERY_FW_UPDATE_OP_END_TRANSFER             0x0002
+#define ICC_CMD_QUERY_SNVRAM                                  0x8D
+#define ICC_CMD_QUERY_SNVRAM_OP_READ                        0x3C12
+#define ICC_CMD_QUERY_SNVRAM_OP_WRITE                       0x3C13
+#define ICC_CMD_QUERY_SNVRAM_OP_WRITE_COUNT                 0x3C14
 
 // Peripherals
 #define AEOLIA_SFLASH_BASE  0xC2000
@@ -542,6 +549,17 @@ static void icc_query(AeoliaPCIEState *s)
             printf("qemu: ICC: Unknown NVRAM query 0x%04X!\n", query->minor);
         }
         break;
+    case ICC_CMD_QUERY_FW_UPDATE:
+        switch (query->minor) {
+        case ICC_CMD_QUERY_FW_UPDATE_OP_BEGIN_TRANSFER:
+            reply->data[0] = 0;
+            reply->result = 0;
+            reply->length = sizeof(aeolia_icc_message_t) + 1;
+        case ICC_CMD_QUERY_FW_UPDATE_OP_TRANSFER_DATA:
+        case ICC_CMD_QUERY_FW_UPDATE_OP_END_TRANSFER:
+        default:
+            printf("qemu: ICC: Unknown fw_update query 0x%x!\n", query->minor);
+        }
     default:
         printf("qemu: ICC: Unknown query %#x!\n", query->major);
     }
