@@ -441,8 +441,16 @@ static gcn_parser_error_t handle_sop2(gcn_parser_t *ctxt,
     gcn_operand_type_t type, gcn_handler_t handler)
 {
     gcn_instruction_t *insn = &ctxt->insn;
+    gcn_parser_error_t err;
 
     insn->encoding = GCN_ENCODING_SOP2;
+    if ((err = handle_operand_sdst(ctxt, &insn->dst, insn->sop2.sdst)))
+        return err;
+    if ((err = handle_operand_ssrc(ctxt, &insn->src0, insn->sop2.ssrc0)))
+        return err;
+    if ((err = handle_operand_ssrc(ctxt, &insn->src1, insn->sop2.ssrc1)))
+        return err;
+
     return handle_op_ts(ctxt, type, handler);
 }
 
@@ -506,11 +514,39 @@ static gcn_parser_error_t handle_sop1(gcn_parser_t *ctxt)
     }
 }
 
-static gcn_parser_error_t handle_sopc(gcn_parser_t *ctxt)
-{
+static gcn_parser_error_t handle_sopc_insn(gcn_parser_t *ctxt,
+  gcn_operand_type_t type, gcn_operand_cond_t cond, gcn_handler_t handler) {
+
     gcn_instruction_t *insn = &ctxt->insn;
 
     insn->encoding = GCN_ENCODING_SOPC;
+    insn->cond = cond;
+    insn->type_dst = type;
+    insn->type_src = type;
+    handler(insn, ctxt->callbacks_data);
+
+    return GCN_PARSER_OK;
+}
+
+static gcn_parser_error_t handle_sopc(gcn_parser_t *ctxt)
+{
+    gcn_instruction_t *insn = &ctxt->insn;
+    gcn_parser_callbacks_t *cbacks = ctxt->callbacks_funcs;
+    gcn_parser_error_t err;
+
+    insn->encoding = GCN_ENCODING_SOPC;
+
+    if ((err = handle_operand_ssrc(ctxt, &insn->src0, insn->sopc.ssrc0)))
+        return err;
+    if ((err = handle_operand_ssrc(ctxt, &insn->src1, insn->sopc.ssrc1)))
+        return err;
+
+    switch (insn->sopc.op) {
+    case S_CMP_EQ_U32:
+        return handle_sopc_insn(ctxt, GCN_TYPE_U32, GCN_COND_EQ, cbacks->handle_s_cmp);
+    default:
+        return GCN_PARSER_ERR_UNKNOWN_OPCODE;
+    }
     return GCN_PARSER_OK;
 }
 
@@ -1016,9 +1052,9 @@ static gcn_parser_error_t handle_mimg(gcn_parser_t *ctxt)
         return err;
     if ((err = handle_operand_vsrc(ctxt, &insn->src0, insn->mimg.vaddr)))
         return err;
-    if ((err = handle_operand_ssrc(ctxt, &insn->src1, insn->mimg.srsrc)))
+    if ((err = handle_operand_ssrc(ctxt, &insn->src1, insn->mimg.srsrc * 4)))
         return err;
-    if ((err = handle_operand_ssrc(ctxt, &insn->src2, insn->mimg.ssamp)))
+    if ((err = handle_operand_ssrc(ctxt, &insn->src2, insn->mimg.ssamp * 4)))
         return err;
     
     insn->src0.flags |= GCN_FLAGS_OP_MULTI;
@@ -1027,6 +1063,10 @@ static gcn_parser_error_t handle_mimg(gcn_parser_t *ctxt)
     insn->src0.lanes = 4;
     insn->src1.lanes = insn->mimg.r128 ? 4 : 8;
     insn->src2.lanes = 4;
+
+    int pc = __builtin_popcount(insn->mimg.dmask);
+    insn->dst.lanes = pc;
+    insn->dst.flags |= pc > 1 ? GCN_FLAGS_OP_MULTI : 0;
 
     switch (insn->mimg.op) {
     case IMAGE_GET_LOD:

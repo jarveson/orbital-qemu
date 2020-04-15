@@ -241,7 +241,7 @@ static void disasm_operand(gcn_disasm_t *ctxt,
         if (type == GCN_TYPE_F16 || type == GCN_TYPE_F32 || type == GCN_TYPE_F64)
             snprintf(tmp, sizeof(tmp), "lit(%lg)", op->const_f64);
         else
-            snprintf(tmp, sizeof(tmp), "lit(%ld)", op->const_u64);
+            snprintf(tmp, sizeof(tmp), "lit(0x%x)", op->const_u64);
         strcat(buf, tmp);
         break;
     case GCN_KIND_SPR:
@@ -277,8 +277,12 @@ static void disasm_operand(gcn_disasm_t *ctxt,
 static void disasm_encoding_sop2(gcn_disasm_t *ctxt,
     gcn_instruction_t *insn, char *buf, const char *name)
 {
-    UNUSED(insn);
     disasm_opcode(ctxt, buf, name);
+    disasm_operand(ctxt, buf, &insn->dst);
+    strcat(buf, ", ");
+    disasm_operand(ctxt, buf, &insn->src0);
+    strcat(buf, ", ");
+    disasm_operand(ctxt, buf, &insn->src1);
 }
 
 static void disasm_encoding_sopk(gcn_disasm_t *ctxt,
@@ -300,8 +304,10 @@ static void disasm_encoding_sop1(gcn_disasm_t *ctxt,
 static void disasm_encoding_sopc(gcn_disasm_t *ctxt,
     gcn_instruction_t *insn, char *buf, const char *name)
 {
-    UNUSED(insn);
     disasm_opcode(ctxt, buf, name);
+    disasm_operand(ctxt, buf, &insn->src0);
+    strcat(buf, ", ");
+    disasm_operand(ctxt, buf, &insn->src1);
 }
 
 static void disasm_encoding_sopp(gcn_disasm_t *ctxt,
@@ -355,13 +361,19 @@ static void disasm_encoding_vop3a(gcn_disasm_t *ctxt,
     disasm_opcode(ctxt, buf, name);
     disasm_operand(ctxt, buf, &insn->dst);
     strcat(buf, ", ");
+    if (insn->vop3a.neg & 1)
+        strcat(buf, "-");
     disasm_operand(ctxt, buf, &insn->src0);
     strcat(buf, ", ");
+    if (insn->vop3a.neg & 2)
+        strcat(buf, "-");
     disasm_operand(ctxt, buf, &insn->src1);
 
     if (insn->vop3a.op >= 0x140 &&
         insn->vop3a.op < 0x180) {
         strcat(buf, ", ");
+        if (insn->vop3a.neg & 4)
+            strcat(buf, "-");
         disasm_operand(ctxt, buf, &insn->src2);
     }
 }
@@ -423,6 +435,9 @@ static void disasm_encoding_mimg(gcn_disasm_t *ctxt,
     disasm_operand(ctxt, buf, &insn->src1);
     strcat(buf, ", ");
     disasm_operand(ctxt, buf, &insn->src2);
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), " dmask: 0x%x", insn->mimg.dmask);
+    strcat(buf, tmp);
 }
 
 static void disasm_encoding_exp(gcn_disasm_t *ctxt,

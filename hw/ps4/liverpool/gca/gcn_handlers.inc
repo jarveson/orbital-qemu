@@ -80,6 +80,9 @@ GCN_HANDLER(SOPP, s_trap)
 GCN_HANDLER(SOPP, s_ttracedata)
 GCN_HANDLER(SOPP, s_waitcnt)
 
+/* SOPC Instructions */
+GCN_HANDLER(SOPC, s_cmp)
+
 /* VOP1 Instructions */
 GCN_HANDLER(VOP1, v_mov)
 GCN_HANDLER(VOP1, v_cvt)
