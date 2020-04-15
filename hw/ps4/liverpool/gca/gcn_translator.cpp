@@ -60,13 +60,14 @@ typedef struct gcn_translator_t {
     spv::Id type_vh;
 
     /* registers */
-    spv::Id var_sgpr[103];
+    spv::Id var_sgpr[128];
     spv::Id var_vgpr[256];
     spv::Id var_attr[32];
     spv::Id var_exp_pos[4];
     spv::Id var_exp_param[32];
     spv::Id var_exp_mrt[4];
     spv::Id var_exp_mrtz;
+    spv::Id var_scc;
 
     /* resources */
     spv::Id res_vh[16];
@@ -142,6 +143,10 @@ static void gcn_translator_init_ps(gcn_translator_t *ctxt)
             ctxt->entry_main->addIdOperand(ctxt->var_exp_mrt[i]);
         }
     }
+
+    // todo: only add if needed and possibly dump into sgprs
+    ctxt->var_scc = b.createVariable(spv::StorageClass::StorageClassFunction, ctxt->type_u32, "scc");
+
     if (analyzer->used_exp_mrtz[0]) {
         ctxt->var_exp_mrtz = b.createVariable(spv::StorageClass::StorageClassOutput,
             ctxt->type_f32, "mrtz");
@@ -208,6 +213,9 @@ static void gcn_translator_init_vs(gcn_translator_t *ctxt)
         }
     }
 
+    // todo: only add if needed and possibly dump into sgprs
+    ctxt->var_scc = b.createVariable(spv::StorageClass::StorageClassFunction, ctxt->type_u32, "scc");
+
     // Define inputs
     auto v_index = b.createVariable(spv::StorageClass::StorageClassInput,
         ctxt->type_u32, "gl_VertexIndex");
@@ -240,6 +248,7 @@ static void gcn_translator_init(gcn_translator_t *ctxt,
                      spv::MemoryModel::MemoryModelGLSL450);
     b.addCapability(spv::Capability::CapabilityShader);
     b.addCapability(spv::Capability::CapabilityImageQuery);
+    b.addCapability(spv::Capability::CapabilityInt8);
 
     // Create types
     /* misc */
@@ -400,11 +409,22 @@ static spv::Id translate_operand_get_sgpr(gcn_translator_t *ctxt,
 
     assert(op->id < ARRAYCOUNT(ctxt->var_sgpr));
     var = ctxt->var_sgpr[op->id];
+    assert(var);
     value = b.createLoad(var);
 
     switch (insn->type_src) {
     case GCN_TYPE_F32:
         return b.createUnaryOp(spv::Op::OpBitcast, ctxt->type_f32, value);
+    case GCN_TYPE_B64:
+    case GCN_TYPE_U64: {
+        assert(op->id + 1 < ARRAYCOUNT(ctxt->var_sgpr));
+        spv::Id varHigh = ctxt->var_sgpr[op->id+1];
+        assert(varHigh);
+        spv::Id valHigh = b.createLoad(var);
+
+        // create vector from variables
+        return b.createCompositeConstruct(b.makeVectorType(ctxt->type_u32, 2), {value, valHigh});
+    }
     default:
         return value;
     }
@@ -419,6 +439,7 @@ static spv::Id translate_operand_get_vgpr(gcn_translator_t *ctxt,
 
     assert(op->id < ARRAYCOUNT(ctxt->var_vgpr));
     var = ctxt->var_vgpr[op->id];
+    assert(var);
     value = b.createLoad(var);
 
     switch (insn->type_src) {
@@ -438,6 +459,7 @@ static spv::Id translate_operand_get_attr(gcn_translator_t *ctxt,
     assert(op->chan < 4);
     assert(op->id < ARRAYCOUNT(ctxt->var_attr));
     var = ctxt->var_attr[op->id];
+    assert(var);
     value = b.createLoad(var);
     value = b.createCompositeExtract(value, ctxt->type_f32, op->chan);
     return value;
@@ -452,9 +474,24 @@ static spv::Id translate_operand_get(gcn_translator_t *ctxt, gcn_operand_t *op)
         return translate_operand_get_vgpr(ctxt, op);
     case GCN_KIND_ATTR:
         return translate_operand_get_attr(ctxt, op);
+    case GCN_KIND_LIT:
     case GCN_KIND_IMM:
         return translate_operand_get_imm(ctxt, op);
+    case GCN_KIND_SPR:
+        switch(op->id) {
+            case 106:
+            case 107:
+            case 124:
+            case 126:
+            case 127:
+                return translate_operand_get_sgpr(ctxt, op);
+            default:
+            printf("op->id: 0x%x \n", op->id);
+            assert(0);
+        }
     default:
+    printf("op->kind: 0x%x \n", op->kind);
+    assert(0);
         return spv::NoResult;
     }
 }
@@ -462,19 +499,30 @@ static spv::Id translate_operand_get(gcn_translator_t *ctxt, gcn_operand_t *op)
 static void translate_operand_set_sgpr(gcn_translator_t *ctxt,
     uint32_t index, spv::Id value)
 {
+    // todo: Set scc in some cases when dst != 0 after
+
     spv::Builder& b = *ctxt->builder;
     spv::Id var;
     gcn_instruction_t *insn = ctxt->cur_insn;
 
     assert(index < ARRAYCOUNT(ctxt->var_sgpr));
     var = ctxt->var_sgpr[index];
+    assert(var);
 
     switch (insn->type_dst) {
+    case GCN_TYPE_B32:
     case GCN_TYPE_F32:
         value = b.createUnaryOp(spv::Op::OpBitcast, ctxt->type_u32, value);
         break;
-    case GCN_TYPE_B32:
-        value = b.createUnaryOp(spv::Op::OpBitcast, ctxt->type_u32, value);
+    case GCN_TYPE_B64: {
+        assert(index + 1 < ARRAYCOUNT(ctxt->var_sgpr));
+        spv::Id varHigh = ctxt->var_sgpr[index+1];
+        assert(varHigh);
+        spv::Id valueHigh = b.createCompositeExtract(value, ctxt->type_u32, 1);
+        value = b.createCompositeExtract(value, ctxt->type_u32, 0);
+        
+        b.createStore(valueHigh, varHigh);
+    }
         break;
     default:
         break;
@@ -491,6 +539,7 @@ static void translate_operand_set_vgpr(gcn_translator_t *ctxt,
 
     assert(op->id < ARRAYCOUNT(ctxt->var_vgpr));
     var = ctxt->var_vgpr[op->id];
+    assert(var);
 
     switch (insn->type_dst) {
     case GCN_TYPE_F32:
@@ -513,6 +562,7 @@ static void translate_operand_set_exp_pos(gcn_translator_t *ctxt,
 
     assert(op->id < ARRAYCOUNT(ctxt->var_exp_pos));
     var = ctxt->var_exp_pos[op->id];
+    assert(var);
 
     value = b.createUnaryOp(spv::Op::OpBitcast, ctxt->type_f32_x4, value);
     b.createStore(value, var);
@@ -526,6 +576,7 @@ static void translate_operand_set_exp_param(gcn_translator_t *ctxt,
 
     assert(op->id < ARRAYCOUNT(ctxt->var_exp_param));
     var = ctxt->var_exp_param[op->id];
+    assert(var);
 
     value = b.createUnaryOp(spv::Op::OpBitcast, ctxt->type_f32_x4, value);
     b.createStore(value, var);
@@ -539,6 +590,7 @@ static void translate_operand_set_exp_mrt(gcn_translator_t *ctxt,
 
     assert(op->id < ARRAYCOUNT(ctxt->var_exp_mrt));
     var = ctxt->var_exp_mrt[op->id];
+    assert(var);
 
     value = b.createUnaryOp(spv::Op::OpBitcast, ctxt->type_f32_x4, value);
     b.createStore(value, var);
@@ -595,7 +647,10 @@ static spv::Id translate_opcode_vop2(gcn_translator_t *ctxt,
         tmp = b.createCompositeConstruct(ctxt->type_f32_x2, { src0, src1 });
         return b.createBuiltinCall(ctxt->type_u32, ctxt->import_glsl_std,
             EXT_GLSL(PackHalf2x16), { tmp });
+    case V_LSHLREV_B32:
+        return b.createBinOp(spv::Op::OpShiftLeftLogical, ctxt->type_u32, src1, src0);
     default:
+    assert(0);
         return spv::NoResult;
     }
 }
@@ -641,6 +696,56 @@ static spv::Id translate_opcode_vop3a(gcn_translator_t *ctxt,
     case V_BFI_B32:
         return b.createTriOp(spv::Op::OpBitFieldInsert, ctxt->type_u32, src0, src1, src2);
     default:
+    assert(0);
+        return spv::NoResult;
+    }
+}
+
+static spv::Id translate_opcode_sop1(gcn_translator_t *ctxt,
+    uint32_t op, spv::Id src)
+{
+    spv::Builder& b = *ctxt->builder;
+
+    // Remap pre-GCN3 SOP1 opcodes into the new opcodes
+    if (op < 3 || op == 35 || op == 51 || op > 52)
+        return GCN_PARSER_ERR_UNKNOWN_OPCODE;
+    if (op > 35)
+        op -= 1;
+    op -= 3;
+
+    switch (op) {
+    case S_MOV_B32:
+    case S_MOV_B64:
+        return src;
+    case S_WQM_B64: {
+        // weird instruction...if any bit in groups of 4 is 1, set 4 bit group to 1's ?
+        // ignoring the instruction for now, since so far its only used with spr registers, which are mostly ignored
+        return src;
+    }
+    default:
+        printf("sop1->op: 0x%x\n", op);
+        assert(0);
+        return spv::NoResult;
+    }
+}
+
+static spv::Id translate_opcode_sop2(gcn_translator_t *ctxt,
+    uint32_t op, spv::Id src0, spv::Id src1)
+{
+    spv::Builder& b = *ctxt->builder;
+
+    switch (op) {
+    case S_BFE_U32:
+        return b.createTriOp(spv::Op::OpBitFieldUExtract, ctxt->type_u32, src0, b.createBinOp(spv::Op::OpBitwiseAnd, ctxt->type_u32, src1, b.makeUintConstant(0xF)), b.createBinOp(spv::Op::OpBitwiseAnd, ctxt->type_u32, src1, b.makeUintConstant(0x3F0000)));
+    case S_BFE_U64:
+        return b.createTriOp(spv::Op::OpBitFieldUExtract, ctxt->type_u64, src0, b.createBinOp(spv::Op::OpBitwiseAnd, ctxt->type_u32, src1, b.makeUintConstant(0x1F)), b.createBinOp(spv::Op::OpBitwiseAnd, ctxt->type_u32, src1, b.makeUintConstant(0x7F0000)));
+    case S_AND_B32:
+        return b.createBinOp(spv::Op::OpBitwiseAnd, ctxt->type_u32, src0, src1);
+    case S_CSELECT_B32:
+        return b.createTriOp(spv::Op::OpSelect, ctxt->type_u32, b.createBinOp(spv::Op::OpIEqual, b.makeBoolType(), b.createUnaryOp(spv::Op::OpBitcast, b.makeIntType(32), ctxt->var_scc), b.makeIntConstant(0x1)), src0, src1);
+    default:
+        printf("sop2->op: 0x%x\n", op);
+        //assert(0);
         return spv::NoResult;
     }
 }
@@ -656,10 +761,34 @@ static void translate_encoding_sopp(gcn_translator_t *ctxt,
     case S_ENDPGM:
         b.makeReturn(false);
         break;
+    case S_WAITCNT:
+        break;
     default:
+    assert(0);
         break;
     }
 }
+
+static void translate_encoding_sop1(gcn_translator_t *ctxt,
+    gcn_instruction_t *insn)
+{
+    spv::Id src = translate_operand_get(ctxt, &insn->src0);
+
+    spv::Id res = translate_opcode_sop1(ctxt, insn->sop1.op, src);
+    translate_operand_set_sgpr(ctxt, insn->dst.id, res);
+}
+
+static void translate_encoding_sop2(gcn_translator_t *ctxt,
+    gcn_instruction_t *insn)
+{
+    spv::Id src0 = translate_operand_get(ctxt, &insn->src0);
+    spv::Id src1 = translate_operand_get(ctxt, &insn->src1);
+
+    spv::Id res = translate_opcode_sop2(ctxt, insn->sop2.op, src0, src1);
+
+    translate_operand_set_sgpr(ctxt, insn->dst.id, res);
+}
+
 
 static void translate_encoding_vop2(gcn_translator_t *ctxt,
     gcn_instruction_t *insn)
@@ -693,6 +822,7 @@ static void translate_encoding_vop3a(gcn_translator_t *ctxt,
     spv::Id src0, src1, src2;
     spv::Id dst = spv::NoResult;
     uint32_t op;
+    spv::Builder& b = *ctxt->builder;
 
     op = insn->vop3a.op;
     if (op < 0x100) {
@@ -709,7 +839,18 @@ static void translate_encoding_vop3a(gcn_translator_t *ctxt,
         src0 = translate_operand_get(ctxt, &insn->src0);
         src1 = translate_operand_get(ctxt, &insn->src1);
         src2 = translate_operand_get(ctxt, &insn->src2);
+
+        spv::Id src_type = insn->type_src == GCN_TYPE_F32 ? ctxt->type_f32 : ctxt->type_f64;
+
+        if (insn->vop3a.neg & 1)
+            src0 = b.createUnaryOp(spv::Op::OpFNegate, src_type, src0);
+        if (insn->vop3a.neg & 2)
+            src1 = b.createUnaryOp(spv::Op::OpFNegate, src_type, src1);
+        if (insn->vop3a.neg & 4)
+            src2 = b.createUnaryOp(spv::Op::OpFNegate, src_type, src2);
+
         dst = translate_opcode_vop3a(ctxt, op, src0, src1, src2);
+        assert(insn->vop3a.omod == 0 && insn->vop3a.clmp == 0);
     } else if (op < 0x200) {
         op -= 0x180;
         src0 = translate_operand_get(ctxt, &insn->src0);
@@ -760,7 +901,10 @@ static void translate_encoding_smrd(gcn_translator_t *ctxt,
             translate_operand_set_sgpr(ctxt, insn->dst.id + i, b.createLoad(dst));
         }
         break;
+    case S_LOAD_DWORDX4:
+        break;
     default:
+    assert(0);
         break;
     }
 }
@@ -884,15 +1028,15 @@ static void translate_insn(gcn_translator_t *ctxt,
     case GCN_ENCODING_EXP:
         translate_encoding_exp(ctxt, insn);
         break;
-#if 0        
+    case GCN_ENCODING_SOP1:
+        translate_encoding_sop1(ctxt, insn);
+        break;
     case GCN_ENCODING_SOP2:
         translate_encoding_sop2(ctxt, insn);
         break;
+#if 0
     case GCN_ENCODING_SOPK:
         translate_encoding_sopk(ctxt, insn);
-        break;
-    case GCN_ENCODING_SOP1:
-        translate_encoding_sop1(ctxt, insn);
         break;
     case GCN_ENCODING_SOPC:
         translate_encoding_sopc(ctxt, insn);
