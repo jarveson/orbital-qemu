@@ -48,6 +48,12 @@ void gcn_analyzer_print_res(gcn_analyzer_t *ctxt, FILE *stream)
     for (i = 0; i < ctxt->res_vh_count; i++) {
         res = ctxt->res_vh[i];
         fprintf(stream, "  + res_vh[%zu]\n", i);
+        fprintf(stream, "    = type: 0x%x flags 0x%x\n", res->type, res->flags);
+        if (res->dep) {
+            fprintf(stream, "       - dep\n");
+            fprintf(stream, "         + type: 0x%x \n", res->dep->type);
+            fprintf(stream, "         + value: 0x%llx\n", res->dep->value.imm.value);
+        }
     }
 
     // T# resource constants
@@ -55,6 +61,12 @@ void gcn_analyzer_print_res(gcn_analyzer_t *ctxt, FILE *stream)
     for (i = 0; i < ctxt->res_th_count; i++) {
         res = ctxt->res_th[i];
         fprintf(stream, "  + res_th[%zu]\n", i);
+        fprintf(stream, "    = type: 0x%x flags 0x%x\n", res->type, res->flags);
+        if (res->dep) {
+            fprintf(stream, "       - dep\n");
+            fprintf(stream, "         + type: 0x%x \n", res->dep->type);
+            fprintf(stream, "         + value: 0x%llx\n", res->dep->value.imm.value);
+        }
     }
 
     // S# resource constants
@@ -195,7 +207,7 @@ static void analyze_resource_sh(gcn_analyzer_t *ctxt, gcn_resource_t *res)
 
 /* helpers */
 
-static void analyze_operand_sgpr(gcn_analyzer_t *ctxt, gcn_operand_t *op)
+static void analyze_operand_sgpr(gcn_analyzer_t *ctxt, gcn_operand_t *op, gcn_operand_type_t type)
 {
     uint32_t index, lanes;
 
@@ -209,6 +221,10 @@ static void analyze_operand_sgpr(gcn_analyzer_t *ctxt, gcn_operand_t *op)
     } else {
         assert(index < ARRAYCOUNT(ctxt->used_sgpr));
         ctxt->used_sgpr[index] = 1;
+        if (type == GCN_TYPE_B64) {
+            assert(index + 1 < ARRAYCOUNT(ctxt->used_sgpr));
+            ctxt->used_sgpr[index + 1] = 1;
+        }
     }
 }
 
@@ -229,7 +245,7 @@ static void analyze_operand_vgpr(gcn_analyzer_t *ctxt, gcn_operand_t *op)
     }
 }
 
-static void analyze_operand(gcn_analyzer_t *ctxt, gcn_operand_t *op)
+static void analyze_operand(gcn_analyzer_t *ctxt, gcn_operand_t *op, gcn_operand_type_t type)
 {
     if (!(op->flags & GCN_FLAGS_OP_USED)) {
         return;
@@ -237,7 +253,7 @@ static void analyze_operand(gcn_analyzer_t *ctxt, gcn_operand_t *op)
 
     switch (op->kind) {
     case GCN_KIND_SGPR:
-        analyze_operand_sgpr(ctxt, op);
+        analyze_operand_sgpr(ctxt, op, type);
         break;
     case GCN_KIND_VGPR:
         analyze_operand_vgpr(ctxt, op);
@@ -262,6 +278,18 @@ static void analyze_operand(gcn_analyzer_t *ctxt, gcn_operand_t *op)
         assert(op->id < ARRAYCOUNT(ctxt->used_exp_param));
         ctxt->used_exp_param[op->id] = 1;
         break;
+    case GCN_KIND_SPR:
+        switch(op->id) {
+            case 106: // vcc lo
+            case 107: // vcc hi
+            case 124: // M0
+            case 126: // exec lo
+            case 127: // exec hi
+                analyze_operand_sgpr(ctxt, op, type);
+                break;
+            default:
+                break;
+        }
     default:
         break;
     }
@@ -304,10 +332,10 @@ static void analyze_encoding_mimg(gcn_analyzer_t *ctxt,
 
     switch (insn->mimg.op) {
     case IMAGE_SAMPLE:
-        dep = analyze_dependency_sgpr(ctxt, insn->mimg.srsrc);
+        dep = analyze_dependency_sgpr(ctxt, insn->mimg.srsrc * 4);
         res = gcn_resource_create(GCN_RESOURCE_TYPE_TH, flags, dep);
         analyze_resource_th(ctxt, res);
-        dep = analyze_dependency_sgpr(ctxt, insn->mimg.ssamp);
+        dep = analyze_dependency_sgpr(ctxt, insn->mimg.ssamp * 4);
         res = gcn_resource_create(GCN_RESOURCE_TYPE_SH, 0, dep);
         analyze_resource_sh(ctxt, res);
         break;
@@ -329,11 +357,11 @@ static void analyze_insn(gcn_analyzer_t *ctxt,
     ctxt->used_types |= (1 << insn->type_dst);
     ctxt->used_types |= (1 << insn->type_src);
 
-    analyze_operand(ctxt, &insn->dst);
-    analyze_operand(ctxt, &insn->src0);
-    analyze_operand(ctxt, &insn->src1);
-    analyze_operand(ctxt, &insn->src2);
-    analyze_operand(ctxt, &insn->src3);
+    analyze_operand(ctxt, &insn->dst, insn->type_dst);
+    analyze_operand(ctxt, &insn->src0, insn->type_src);
+    analyze_operand(ctxt, &insn->src1, insn->type_src);
+    analyze_operand(ctxt, &insn->src2, insn->type_src);
+    analyze_operand(ctxt, &insn->src3, insn->type_src);
 
     switch (insn->encoding) {
     case GCN_ENCODING_SMRD:

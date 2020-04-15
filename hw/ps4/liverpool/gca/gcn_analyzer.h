@@ -27,7 +27,7 @@
 typedef struct gcn_analyzer_t {
     /* usage */
     uint32_t used_types;
-    uint8_t used_sgpr[103];
+    uint8_t used_sgpr[128];
     uint8_t used_vgpr[256];
     uint8_t used_attr[32];
     uint8_t used_exp_pos[4];
