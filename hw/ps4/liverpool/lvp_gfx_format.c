@@ -321,6 +321,8 @@ VkFormat getVkFormat_byImgDataNumFormat(IMG_DATA_FORMAT dfmt, IMG_NUM_FORMAT nfm
             break;
         }
         break;
+    case IMG_DATA_FORMAT_FMASK16_S16_F1:
+        return VK_FORMAT_R16_SFLOAT;
     default:
         break;
     }
