@@ -30,7 +30,7 @@ typedef struct gcn_dependency_context_t {
     uint32_t *user_sgpr;
 
     void *handler_ctxt;
-    uint32_t(*handle_read_mem)(uint64_t addr, uint64_t size, void *ctxt);
+    uint32_t(*handle_read_mem)(void* ctxt, uint64_t addr, uint64_t size, void *data);
 } gcn_dependency_context_t;
 
 typedef enum gcn_dependency_type_t {
@@ -38,6 +38,7 @@ typedef enum gcn_dependency_type_t {
     GCN_DEPENDENCY_TYPE_IMM,   // Immediate value
     GCN_DEPENDENCY_TYPE_SGPR,  // SGPR (mmSPI_SHADER_USER_DATA_*)
     GCN_DEPENDENCY_TYPE_MEM,   // Memory read
+    GCN_DEPENDENCY_TYPE_PTR,   // Pointer load
 } gcn_dependency_type_t;
 
 typedef union gcn_dependency_value_t {
@@ -51,6 +52,9 @@ typedef union gcn_dependency_value_t {
         struct gcn_dependency_t *base;
         struct gcn_dependency_t *offset;
     } mem;
+    struct { // GCN_DEPENDENCY_TYPE_PTR
+        uint32_t index;
+    } ptr;
 } gcn_dependency_value_t;
 
 typedef struct gcn_dependency_t {

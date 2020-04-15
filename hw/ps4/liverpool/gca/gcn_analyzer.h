@@ -35,6 +35,14 @@ typedef struct gcn_analyzer_t {
     uint8_t used_exp_mrt[8];
     uint8_t used_exp_mrtz[1];
 
+    // *very* simplistic taint tracking
+    // just flags load insn for detecting pointer
+    // only tracks on even from 0-16
+    struct {
+        uint8_t dst_base;
+        bool has_load;
+    } taint[8];
+
     /* properties */
     struct {
         bool has_isolated_components : 1;  // VGPR components are isolated

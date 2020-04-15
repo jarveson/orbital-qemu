@@ -90,6 +90,8 @@ bool gcn_resource_update(gcn_resource_t *res, gcn_dependency_context_t *context)
 {
     gcn_dependency_t *dep;
     uint32_t index;
+    uint64_t addr;
+    uint64_t size;
 
     dep = res->dep;
     switch (dep->type) {
@@ -105,6 +107,12 @@ bool gcn_resource_update(gcn_resource_t *res, gcn_dependency_context_t *context)
             res->dword[6] = context->user_sgpr[index + 6];
             res->dword[7] = context->user_sgpr[index + 7];
         }
+        break;
+    case GCN_DEPENDENCY_TYPE_PTR:
+        index = dep->value.ptr.index;
+        addr = context->user_sgpr[index + 0] | (((uint64_t)context->user_sgpr[index + 1]) << 32);
+        size = (res->type == GCN_RESOURCE_TYPE_TH) && (res->flags & GCN_RESOURCE_FLAGS_R256) ? 16 : 32;
+        context->handle_read_mem(context->handler_ctxt, addr, size, &res->dword);
         break;
     default:
         fprintf(stderr, "%s: Unsupported dependency type!\n", __FUNCTION__);

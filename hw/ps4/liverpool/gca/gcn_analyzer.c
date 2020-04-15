@@ -163,11 +163,25 @@ static gcn_dependency_t* analyze_dependency_sgpr(gcn_analyzer_t *ctxt, uint32_t 
     if (index >= ARRAYCOUNT(ctxt->deps_sgpr))
         return NULL;
 
+    gcn_dependency_type_t dtype = GCN_DEPENDENCY_TYPE_SGPR;
+
+    // grab real source if required
+    for (int i = 0; i < 8; ++i) {
+        if (ctxt->taint[i].has_load && ctxt->taint[i].dst_base == index) {
+            index = i * 2;
+            dtype = GCN_DEPENDENCY_TYPE_PTR;
+            break;
+        }
+    }
+
     // Create dependency, if required
     dep = ctxt->deps_sgpr[index];
     if (!dep && index < 16) {
-        value.sgpr.index = index;
-        dep = gcn_dependency_create(GCN_DEPENDENCY_TYPE_SGPR, value);
+        if (dtype == GCN_DEPENDENCY_TYPE_SGPR)
+            value.sgpr.index = index;
+        else 
+            value.ptr.index = index;
+        dep = gcn_dependency_create(dtype, value);
         ctxt->deps_sgpr[index] = dep;
     }
     return dep;
@@ -295,6 +309,14 @@ static void analyze_operand(gcn_analyzer_t *ctxt, gcn_operand_t *op, gcn_operand
     }
 }
 
+static void analyze_mark_taint(gcn_analyzer_t* ctxt, uint8_t src, uint8_t dst) {
+    if (src > 16 || (src % 2) != 0)
+        return;
+
+    ctxt->taint[src / 2].dst_base = dst;
+    ctxt->taint[src / 2].has_load = true;
+}
+
 /* encodings */
 
 static void analyze_encoding_smrd(gcn_analyzer_t *ctxt,
@@ -312,6 +334,13 @@ static void analyze_encoding_smrd(gcn_analyzer_t *ctxt,
         dep = analyze_dependency_sgpr(ctxt, insn->src0.id);
         res = gcn_resource_create(GCN_RESOURCE_TYPE_VH, 0, dep);
         analyze_resource_vh(ctxt, res);
+        break;
+    case S_LOAD_DWORD:
+    case S_LOAD_DWORDX2:
+    case S_LOAD_DWORDX4:
+    case S_LOAD_DWORDX8:
+    case S_LOAD_DWORDX16:
+        analyze_mark_taint(ctxt, insn->src0.id, insn->dst.id);
         break;
     default:
         break;

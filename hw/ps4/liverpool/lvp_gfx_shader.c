@@ -126,6 +126,8 @@ void gfx_shader_translate(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     pgm_size = 0x1000; // TODO
     mapped_size = pgm_size;
     pgm_data = address_space_map(gart->as[vmid], pgm_addr, &mapped_size, false);
+    assert(pgm_data);
+    assert(mapped_size >= pgm_size);
     switch (stage) {
     case GCN_STAGE_PS:
         gfx_shader_translate_ps(shader, gfx, pgm_data);
@@ -266,6 +268,7 @@ static void gfx_shader_update_vh(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     }
     addr_src = vh->base;
     data_src = address_space_map(gart->as[vmid], addr_src, &size_src, false);
+    assert(size_src >= bufInfo.size);
     memcpy(data_dst, data_src, (size_t)bufInfo.size);
     address_space_unmap(gart->as[vmid], data_src, size_src, false, size_src);
     vkUnmapMemory(dev, vkres->mem);
@@ -389,6 +392,7 @@ static void gfx_shader_update_th(gfx_shader_t *shader, uint32_t vmid, gfx_state_
     }
     addr_src = th->base256 << 8;
     data_src = address_space_map(gart->as[vmid], addr_src, &size_src, false);
+    assert(size_src >= stagingBufInfo.size);
 
     uint32_t img_pitch = th->ext.pitch;
     if (img_pitch != 0) {
@@ -569,6 +573,24 @@ void gfx_shader_cleanup(gfx_shader_t *shader, gfx_state_t *gfx) {
     //fprintf(stderr, "done: 0x%x\n", shader->analyzer.res_vh_count);
 }
 
+struct gfx_dep_mem_ctx_t {
+    gfx_state_t* gfx;
+    uint32_t vmid;
+};
+
+uint32_t gfx_dep_read_mem(void* ctxt, uint64_t addr, uint64_t size, void* data) {
+    struct gfx_dep_mem_ctx_t* cctxt = ctxt;
+    gfx_state_t* gfx = cctxt->gfx;
+    gart_state_t* gart = gfx->gart;
+
+    uint64_t size_src = size;
+    void* data_src = address_space_map(gart->as[cctxt->vmid], addr, &size_src, false);
+    assert(size_src >= size);
+    memcpy(data, data_src, (size_t)size);
+    address_space_unmap(gart->as[cctxt->vmid], data_src, size_src, false, size_src);
+    return size;
+}
+
 void gfx_shader_update(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     VkDescriptorSet descSet)
 {
@@ -578,6 +600,13 @@ void gfx_shader_update(gfx_shader_t *shader, uint32_t vmid, gfx_state_t *gfx,
     VkDevice dev = gfx->vk->device;
     int binding;
     size_t i;
+
+    struct gfx_dep_mem_ctx_t mem_ctx;
+    mem_ctx.vmid = vmid;
+    mem_ctx.gfx = gfx;
+
+    dep_ctxt.handler_ctxt = &mem_ctx;
+    dep_ctxt.handle_read_mem = gfx_dep_read_mem;
 
     // Prepare dependency context
     switch (shader->stage) {
